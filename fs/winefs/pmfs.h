@@ -48,7 +48,7 @@
 #endif
 
 /* #define pmfs_dbg(s, args...)         pr_debug(s, ## args) */
-#define pmfs_dbg(s, args ...)           pr_debug(s, ## args)
+#define pmfs_dbg(s, args ...)           pr_info(s, ## args)
 #define pmfs_dbg1(s, args ...)
 #define pmfs_err(sb, s, args ...)       pmfs_error_mng(sb, s, ## args)
 #define pmfs_warn(s, args ...)          pr_warn(s, ## args)

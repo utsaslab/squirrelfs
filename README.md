@@ -35,7 +35,7 @@ You can create your own VM setup or use a pre-existing image. Details are below.
 
 ## Baremetal setup
 
-Follow these instructions to install the kernel on a baremetal Chameleon Cloud machine. **Ignore this section if you are using a VM**
+Follow these instructions to install the kernel on a baremetal Chameleon Cloud machine.
 
 1. Create a baremetal Chameleon cloud instance with their Ubuntu22.04 image. 
 2. On the instance, run `sudo apt-get install build-essential libncurses-dev bison flex libssl-dev libelf-dev git openssh-server curl clang-14 zstd lld-14 llvm-14`.
@@ -72,7 +72,6 @@ TODO: add instructions for building on host and using direct boot.
         11. Set `CONFIG_HAYLEY_FS` to M
         12. Set `CONFIG_DEBUG_PREEMPTION` to N
         13. Set `CONFIG_LOCALVERSION_AUTO` to N
-        14. Set `CONFIG_TRANSPARENT_HUGEPAGE` to Y
     4. Optional: if you want to use rust-analyzer for development, run `make rust-analyzer` to generate the necessary files. However, this does *not* enable Rust analyzer in the fs kernel module - TODO: figure out how to enable it there. Running this command may prompt you to set some config options interactively; just hit Enter to use the default on all of them.
 5. Build the kernel with `make LLVM=-14 -j <number of cores>`. `LLVM=1` is necessary to build Rust components.
     - Note: while building the kernel, it may prompt you to select some configuration options interactively.
@@ -89,7 +88,9 @@ The above steps only need to be followed the first time after cloning the kernel
 2. `sudo make modules_install install`
 3. Reboot
 
-You do *not* need to rebuild the entire kernel every time you make a change to the file system. The kernel only needs to be rebuilt and reinstalled if you make a change to kernel code (e.g. in the `rust/` directory).
+You do *not* need to rebuild the entire kernel every time you make a change to the file system. The kernel only needs to be rebuilt and reinstalled if:
+1. You make a change to kernel code (e.g. in the `rust/` directory).
+2. Attempting to load the file system kernel module returns an error saying that it has an invalid format. This means that the module was compiled against a slightly different version/build of the kernel than the currently-running one. Sometimes this happens for no apparent reason.
 
 ## File system setup
 
@@ -101,6 +102,9 @@ You do *not* need to rebuild the entire kernel every time you make a change to t
 5. To unmount the file system: `sudo umount /dev/pmem0`
 6. To remove the file system module: `sudo rmmod hayleyfs`
 
+Currently, the file system cannot be remounted - it reinitializes and zeroes out all old data on each mount. 
+Currently, the file system supports creating and removing files. Otherwise, segmentation fault occurs.
+
 ## Using filebench
 
-You MUST run `echo 0 | sudo tee /proc/sys/kernel/randomize_va_space` on the VM prior to running filebench workloads; they will segfault otherwise.
+You MUST run `echo 0 | sudo tee /proc/sys/kernel/randomize_va_space` on the VM prior to running fileserver (maybe others?) or filebench will segfault.

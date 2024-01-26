@@ -518,7 +518,7 @@ impl<'a, Type> InodeWrapper<'a, Clean, Start, Type> {
         } else {
             panic!("ERROR: no vfs inode for inode {:?} in dec_link_count\n", self.ino);
         }
-        if self.inode.size > new_size {
+        if self.inode.size < new_size {
             self.inode.size = new_size;
             hayleyfs_flush_buffer(self.inode, mem::size_of::<HayleyFsInode>(), true);
         }

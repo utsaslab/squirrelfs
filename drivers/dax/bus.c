@@ -1310,6 +1310,59 @@ static const struct device_type dev_dax_type = {
 	.groups = dax_attribute_groups,
 };
 
+
+// following functions are from trio
+static long __dev_dax_get_size_in_bytes(struct dev_dax * dev_dax)
+{
+    int i = 0;
+
+    long size = 0;
+
+    for (i = 0; i < dev_dax->nr_range; i++)
+    {
+        struct dev_dax_range *dax_range = &(dev_dax->ranges[i]);
+        size += range_len(&(dax_range->range));
+    }
+
+    return size;
+}
+
+/*
+ * Let's make some simplification here, since only our code calls this function
+ *
+ * 1. pgoff and nr_pages are ignored, we simply wants to map the whole
+ * dev_dax to the kerenl address space.
+ *
+ * 2. Also, no code to check bad blocks in dev_dax
+ *
+ * 3. pfn field is ignored.
+ */
+static long dev_dax_direct_access(struct dax_device *dax_dev,
+        pgoff_t pgoff, long nr_pages, enum dax_access_mode mode, 
+		void **kaddr, pfn_t *pfn)
+{
+    struct dev_dax * dev_dax = dax_get_private(dax_dev);
+    phys_addr_t paddr = dax_pgoff_to_phys(dev_dax, 0x0, 0);
+
+    if (kaddr)
+        *kaddr = phys_to_virt(paddr);
+
+    return __dev_dax_get_size_in_bytes(dev_dax) / PAGE_SIZE;
+}
+
+/* Dummy function to make alloc_dax happy. Should not be invoked */
+static int dev_dax_zero_page_range(struct dax_device *dax_dev, pgoff_t pgoff,
+                    size_t nr_pages)
+{
+    printk("Invoke dev_dax_zero_page_range!n");
+    return 0;
+}
+
+static const struct dax_operations dev_dax_ops = {
+    .direct_access = dev_dax_direct_access,
+    .zero_page_range = dev_dax_zero_page_range,
+};
+
 struct dev_dax *devm_create_dev_dax(struct dev_dax_data *data)
 {
 	struct dax_region *dax_region = data->dax_region;
@@ -1370,7 +1423,7 @@ struct dev_dax *devm_create_dev_dax(struct dev_dax_data *data)
 	 * No dax_operations since there is no access to this device outside of
 	 * mmap of the resulting character device.
 	 */
-	dax_dev = alloc_dax(dev_dax, NULL);
+	dax_dev = alloc_dax(dev_dax, &dev_dax_ops);
 	if (IS_ERR(dax_dev)) {
 		rc = PTR_ERR(dax_dev);
 		goto err_alloc_dax;
