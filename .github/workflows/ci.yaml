@@ -1,0 +1,418 @@
+on:
+  pull_request: {}
+  schedule:
+    - cron: '0 8 * * MON,WED,FRI'
+  push:
+
+jobs:
+  ci:
+    runs-on: ubuntu-20.04
+    container: ghcr.io/rust-for-linux/ci:Rust-1.66.0
+    timeout-minutes: 25
+
+    strategy:
+      matrix:
+        arch: [arm, arm64, ppc64le, riscv64, x86_64]
+        toolchain: [gcc, clang, llvm]
+        config: [debug, release]
+        output: [src] # [src, build]
+        sysroot: [common] # [common, custom]
+        lto: [none] # [none, thin]
+
+        exclude:
+          # arm 32-bit gcc not yet supported
+          - arch: arm
+            toolchain: gcc
+          # arm (clang/LLVM,release) issue since Rust 1.56
+          - arch: arm
+            toolchain: clang
+            config: release
+          - arch: arm
+            toolchain: llvm
+            config: release
+          # riscv64 debug (see #500 and #502).
+          - arch: riscv64
+            config: debug
+          # Exclude `LLVM=1` where not supported.
+          - arch: ppc64le
+            toolchain: llvm
+          - arch: riscv64
+            toolchain: llvm
+
+        # A few independent combinations to avoid exploding the matrix:
+        #   - The other option for `output`.
+        #   - Whether to use a custom sysroot.
+        #   - Explicitly enabling `lto` on platforms which support LTO.
+        include:
+          - arch: arm64
+            toolchain: gcc
+            config: debug
+            output: build
+            sysroot: custom
+            lto: none
+
+          - arch: arm64
+            toolchain: llvm
+            config: debug
+            output: build
+            sysroot: custom
+            lto: thin
+
+          - arch: arm64
+            toolchain: llvm
+            config: release
+            output: build
+            sysroot: custom
+            lto: thin
+
+          - arch: ppc64le
+            toolchain: clang
+            config: release
+            output: build
+            sysroot: common
+            lto: none
+
+          - arch: x86_64
+            toolchain: llvm
+            config: debug
+            output: build
+            sysroot: custom
+            lto: none
+
+          - arch: x86_64
+            toolchain: llvm
+            config: debug
+            output: src
+            sysroot: common
+            lto: thin
+
+          - arch: x86_64
+            toolchain: llvm
+            config: release
+            output: src
+            sysroot: common
+            lto: thin
+
+    steps:
+      # Setup: checkout
+      - uses: actions/checkout@v3
+
+      # Setup: Store matrix name
+      - run: echo 'MATRIX_NAME=${{ matrix.arch }}-${{ matrix.toolchain }}-${{ matrix.config }}' >> $GITHUB_ENV
+
+      # Setup: Github cache
+      - uses: actions/cache@v3
+        with:
+          path: /root/.ccache
+          key: ${{ env.MATRIX_NAME }}-ccache-${{ github.run_id }}
+          restore-keys: |
+              ${{ env.MATRIX_NAME }}-ccache-
+
+      # Setup: variables
+      - if: matrix.arch == 'x86_64'
+        run: |
+          echo 'IMAGE_PATH=arch/x86/boot/bzImage' >> $GITHUB_ENV
+          echo 'QEMU_ARCH=x86_64' >> $GITHUB_ENV
+          echo 'QEMU_MACHINE=pc' >> $GITHUB_ENV
+          echo 'QEMU_CPU=Cascadelake-Server' >> $GITHUB_ENV
+          echo 'QEMU_APPEND=console=ttyS0' >> $GITHUB_ENV
+      - if: matrix.arch == 'arm64'
+        run: |
+          echo 'MAKE_ARCH=ARCH=arm64' >> $GITHUB_ENV
+          echo 'MAKE_CROSS_COMPILE=CROSS_COMPILE=aarch64-linux-gnu-' >> $GITHUB_ENV
+          echo 'IMAGE_PATH=arch/arm64/boot/Image.gz' >> $GITHUB_ENV
+          echo 'QEMU_ARCH=aarch64' >> $GITHUB_ENV
+          echo 'QEMU_MACHINE=virt' >> $GITHUB_ENV
+          echo 'QEMU_CPU=cortex-a72' >> $GITHUB_ENV
+      - if: matrix.arch == 'ppc64le'
+        run: |
+          echo 'MAKE_ARCH=ARCH=powerpc' >> $GITHUB_ENV
+          echo 'MAKE_CROSS_COMPILE=CROSS_COMPILE=powerpc64le-linux-gnu-' >> $GITHUB_ENV
+          echo 'MAKE_LLVM_IAS=LLVM_IAS=0' >> $GITHUB_ENV
+          echo 'IMAGE_PATH=vmlinux' >> $GITHUB_ENV
+          echo 'QEMU_ARCH=ppc64' >> $GITHUB_ENV
+          echo 'QEMU_MACHINE=pseries' >> $GITHUB_ENV
+          echo 'QEMU_CPU=POWER9' >> $GITHUB_ENV
+      - if: matrix.arch == 'arm'
+        run: |
+          echo 'MAKE_ARCH=ARCH=arm' >> $GITHUB_ENV
+          echo 'MAKE_CROSS_COMPILE=CROSS_COMPILE=arm-linux-gnueabi-' >> $GITHUB_ENV
+          echo 'IMAGE_PATH=arch/arm/boot/zImage' >> $GITHUB_ENV
+          echo 'QEMU_ARCH=arm' >> $GITHUB_ENV
+          echo 'QEMU_MACHINE=virt' >> $GITHUB_ENV
+          echo 'QEMU_CPU=cortex-a7' >> $GITHUB_ENV
+      - if: matrix.arch == 'riscv64'
+        run: |
+          echo 'MAKE_ARCH=ARCH=riscv' >> $GITHUB_ENV
+          echo 'MAKE_CROSS_COMPILE=CROSS_COMPILE=riscv64-linux-gnu-' >> $GITHUB_ENV
+          echo 'IMAGE_PATH=arch/riscv/boot/Image' >> $GITHUB_ENV
+          echo 'QEMU_ARCH=riscv64' >> $GITHUB_ENV
+          echo 'QEMU_MACHINE=virt' >> $GITHUB_ENV
+          echo 'QEMU_CPU=rv64' >> $GITHUB_ENV
+          echo 'QEMU_ARGS=-bios /usr/lib/riscv64-linux-gnu/opensbi/generic/fw_jump.elf' >> $GITHUB_ENV
+
+      - if: matrix.toolchain == 'clang'
+        run: echo 'MAKE_TOOLCHAIN=CC=clang' >> $GITHUB_ENV
+      - if: matrix.toolchain == 'llvm'
+        run: echo 'MAKE_TOOLCHAIN=LLVM=1' >> $GITHUB_ENV
+
+      # if arch is supported and ThinLTO is enabled, enable LLVM's integrated assembler
+      - if: matrix.arch == 'arm64' && matrix.toolchain == 'llvm' && matrix.lto == 'thin'
+        run: echo 'MAKE_LLVM_IAS=LLVM_IAS=1' >> $GITHUB_ENV
+      - if: matrix.arch == 'x86_64' && matrix.toolchain == 'llvm' && matrix.lto == 'thin'
+        run: echo 'MAKE_LLVM_IAS=LLVM_IAS=1' >> $GITHUB_ENV
+
+      - if: matrix.output == 'build'
+        run: |
+          echo 'MAKE_OUTPUT=O=build' >> $GITHUB_ENV
+          echo 'BUILD_DIR=build/' >> $GITHUB_ENV
+
+      # Setup: Rust
+      #
+      # `rustc` via `rustup` needs to find the `settings.xml` file,
+      # but GitHub overrides `$HOME` for containers. Undo it, even
+      # if it makes GitHub show some Docker warnings.
+      # See https://github.com/actions/runner/issues/863.
+      #
+      # Note that the commands need to be in their own `run` to have
+      # `$HOME` visible for the second one.
+      - run: echo 'HOME=/root' >> $GITHUB_ENV
+      - run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - if: matrix.sysroot == 'custom'
+        run: |
+          echo 'RUSTC_SYSROOT=--sysroot=$HOME/sysroot' >> $GITHUB_ENV
+          echo "MAKE_SYSROOT=KRUSTFLAGS=--sysroot=$HOME/sysroot" >> $GITHUB_ENV
+
+      # Setup: rustc native libs
+      - if: matrix.sysroot == 'custom'
+        run: |
+          mkdir $(rustc ${{ env.RUSTC_SYSROOT }} --print sysroot)
+          ln -s $(rustc --print sysroot)/lib $(rustc ${{ env.RUSTC_SYSROOT }} --print sysroot)/lib
+
+      # Setup: ccache
+      - run: |
+          echo '/usr/lib/ccache:$PATH' >> $GITHUB_PATH
+
+      # Setup: Check existing ccache
+      - run: ccache -s
+
+      # Setup: module parameters test
+      - run: |
+          cp samples/rust/rust_module_parameters.rs samples/rust/rust_module_parameters_builtin_default.rs
+          cp samples/rust/rust_module_parameters.rs samples/rust/rust_module_parameters_builtin_custom.rs
+          cp samples/rust/rust_module_parameters.rs samples/rust/rust_module_parameters_loadable_default.rs
+          cp samples/rust/rust_module_parameters.rs samples/rust/rust_module_parameters_loadable_custom.rs
+
+          sed -i 's:rust_module_parameters:rust_module_parameters_builtin_default:g'  samples/rust/rust_module_parameters_builtin_default.rs
+          sed -i 's:rust_module_parameters:rust_module_parameters_builtin_custom:g'   samples/rust/rust_module_parameters_builtin_custom.rs
+          sed -i 's:rust_module_parameters:rust_module_parameters_loadable_default:g' samples/rust/rust_module_parameters_loadable_default.rs
+          sed -i 's:rust_module_parameters:rust_module_parameters_loadable_custom:g'  samples/rust/rust_module_parameters_loadable_custom.rs
+
+          echo 'obj-y	+= rust_module_parameters_builtin_default.o'  >> samples/rust/Makefile
+          echo 'obj-y	+= rust_module_parameters_builtin_custom.o'   >> samples/rust/Makefile
+          echo 'obj-m	+= rust_module_parameters_loadable_default.o' >> samples/rust/Makefile
+          echo 'obj-m	+= rust_module_parameters_loadable_custom.o'  >> samples/rust/Makefile
+
+      # Build
+      - if: matrix.lto == 'none'
+        run: mv .github/workflows/kernel-${{ matrix.arch }}-${{ matrix.config }}.config .config
+      - if: matrix.lto == 'thin'
+        run: mv .github/workflows/kernel-${{ matrix.arch }}-${{ matrix.config }}-thinlto.config .config
+
+      - if: matrix.output == 'build'
+        run: |
+          mkdir ${{ env.BUILD_DIR }}
+          mv .config ${{ env.BUILD_DIR }}.config
+          sed -i 's:samples/rust/:${{ env.BUILD_DIR }}samples/rust/:' .github/workflows/qemu-initramfs.desc
+
+      - run: make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3
+
+      # Print the final config used
+      - run: cat ${{ env.BUILD_DIR }}.config
+
+      # Make sure `CONFIG_WERROR` was enabled
+      - run: grep -F 'CONFIG_WERROR=y' ${{ env.BUILD_DIR }}.config
+
+      # Prepare image
+      - run: |
+          mv $HOME/busybox-${{ matrix.arch }} busybox
+          ${{ env.BUILD_DIR }}usr/gen_init_cpio .github/workflows/qemu-initramfs.desc > qemu-initramfs.img
+
+      # Run
+      - run: |
+          qemu-system-${{ env.QEMU_ARCH }} \
+            ${{ env.QEMU_ARGS }} \
+            -kernel ${{ env.BUILD_DIR }}${{ env.IMAGE_PATH }} \
+            -initrd qemu-initramfs.img \
+            -M ${{ env.QEMU_MACHINE }} \
+            -cpu ${{ env.QEMU_CPU }} \
+            -smp 2 \
+            -nographic \
+            -vga none \
+            -no-reboot \
+            -append '${{ env.QEMU_APPEND }} \
+              rust_module_parameters_builtin_custom.my_bool=n \
+              rust_module_parameters_builtin_custom.my_i32=345543 \
+              rust_module_parameters_builtin_custom.my_str=🦀mod \
+              rust_module_parameters_builtin_custom.my_usize=84 \
+              rust_module_parameters_builtin_custom.my_array=1,2,3 \
+            ' \
+            | sed 's:\r$::' \
+            | tee qemu-stdout.log
+
+      # The kernel should not be generating any warnings
+      - run: |
+          ! grep -v 'at mm/debug_vm_pgtable.c:' qemu-stdout.log | grep '] WARNING:'
+
+      # Check
+      - run: |
+          grep '] ok 1 rust_kernel_doctests$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_minimal: Rust minimal sample (init)$'     qemu-stdout.log
+          grep '] rust_minimal: Am I built-in? false$'           qemu-stdout.log
+          grep '] rust_minimal: My numbers are \[72, 108, 200]$' qemu-stdout.log
+          grep '] rust_minimal: Rust minimal sample (exit)$'     qemu-stdout.log
+
+      - run: |
+          grep '] rust_print: Rust printing macros sample (init)$'       qemu-stdout.log
+
+          grep '] rust_print: Emergency message (level 0) without args$' qemu-stdout.log
+          grep '] rust_print: Alert message (level 1) without args$'     qemu-stdout.log
+          grep '] rust_print: Critical message (level 2) without args$'  qemu-stdout.log
+          grep '] rust_print: Error message (level 3) without args$'     qemu-stdout.log
+          grep '] rust_print: Warning message (level 4) without args$'   qemu-stdout.log
+          grep '] rust_print: Notice message (level 5) without args$'    qemu-stdout.log
+          grep '] rust_print: Info message (level 6) without args$'      qemu-stdout.log
+          grep '] rust_print: A line that is continued without args$'    qemu-stdout.log
+
+          grep '] rust_print: Emergency message (level 0) with args$'    qemu-stdout.log
+          grep '] rust_print: Alert message (level 1) with args$'        qemu-stdout.log
+          grep '] rust_print: Critical message (level 2) with args$'     qemu-stdout.log
+          grep '] rust_print: Error message (level 3) with args$'        qemu-stdout.log
+          grep '] rust_print: Warning message (level 4) with args$'      qemu-stdout.log
+          grep '] rust_print: Notice message (level 5) with args$'       qemu-stdout.log
+          grep '] rust_print: Info message (level 6) with args$'         qemu-stdout.log
+          grep '] rust_print: A line that is continued with args$'       qemu-stdout.log
+
+          grep '] rust_print: Rust printing macros sample (exit)$'       qemu-stdout.log
+
+      - run: |
+          grep '] rust_module_parameters_builtin_default: Rust module parameters sample (init)'   qemu-stdout.log
+          grep '] rust_module_parameters_builtin_default:   my_bool:    true$'                    qemu-stdout.log
+          grep '] rust_module_parameters_builtin_default:   my_i32:     42$'                      qemu-stdout.log
+          grep '] rust_module_parameters_builtin_default:   my_str:     default str val$'         qemu-stdout.log
+          grep '] rust_module_parameters_builtin_default:   my_usize:   42$'                      qemu-stdout.log
+          grep '] rust_module_parameters_builtin_default:   my_array:   \[0, 1]$'                 qemu-stdout.log
+
+          grep '] rust_module_parameters_builtin_custom: Rust module parameters sample (init)$'   qemu-stdout.log
+          grep '] rust_module_parameters_builtin_custom:   my_bool:    false$'                    qemu-stdout.log
+          grep '] rust_module_parameters_builtin_custom:   my_i32:     345543$'                   qemu-stdout.log
+          grep '] rust_module_parameters_builtin_custom:   my_str:     🦀mod$'                    qemu-stdout.log
+          grep '] rust_module_parameters_builtin_custom:   my_usize:   84$'                       qemu-stdout.log
+          grep '] rust_module_parameters_builtin_custom:   my_array:   \[1, 2, 3]$'               qemu-stdout.log
+
+          grep '] rust_module_parameters_loadable_default: Rust module parameters sample (init)$' qemu-stdout.log
+          grep '] rust_module_parameters_loadable_default:   my_bool:    true$'                   qemu-stdout.log
+          grep '] rust_module_parameters_loadable_default:   my_i32:     42$'                     qemu-stdout.log
+          grep '] rust_module_parameters_loadable_default:   my_str:     default str val$'        qemu-stdout.log
+          grep '] rust_module_parameters_loadable_default:   my_usize:   42$'                     qemu-stdout.log
+          grep '] rust_module_parameters_loadable_default:   my_array:   \[0, 1]$'                qemu-stdout.log
+          grep '] rust_module_parameters_loadable_default: Rust module parameters sample (exit)$' qemu-stdout.log
+
+          grep '] rust_module_parameters_loadable_custom: Rust module parameters sample (init)$'  qemu-stdout.log
+          grep '] rust_module_parameters_loadable_custom:   my_bool:    false$'                   qemu-stdout.log
+          grep '] rust_module_parameters_loadable_custom:   my_i32:     345543$'                  qemu-stdout.log
+          grep '] rust_module_parameters_loadable_custom:   my_str:     🦀mod$'                   qemu-stdout.log
+          grep '] rust_module_parameters_loadable_custom:   my_usize:   84$'                      qemu-stdout.log
+          grep '] rust_module_parameters_loadable_custom:   my_array:   \[1, 2, 3]$'              qemu-stdout.log
+          grep '] rust_module_parameters_loadable_custom: Rust module parameters sample (exit)$'  qemu-stdout.log
+
+          grep '] rust_module_parameters: Rust module parameters sample (init)$'                  qemu-stdout.log
+          grep '] rust_module_parameters:   my_bool:    true$'                                    qemu-stdout.log
+          grep '] rust_module_parameters:   my_i32:     42$'                                      qemu-stdout.log
+          grep '] rust_module_parameters:   my_str:     default str val$'                         qemu-stdout.log
+          grep '] rust_module_parameters:   my_usize:   42$'                                      qemu-stdout.log
+          grep '] rust_module_parameters:   my_array:   \[0, 1]$'                                 qemu-stdout.log
+          grep '] rust_module_parameters: Rust module parameters sample (exit)$'                  qemu-stdout.log
+
+      - run: |
+          grep '] rust_sync: Rust synchronisation primitives sample (init)$' qemu-stdout.log
+          grep '] rust_sync: Value: 10$'                                     qemu-stdout.log
+          grep '] rust_sync: Rust synchronisation primitives sample (exit)$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_chrdev: Rust character device sample (init)$' qemu-stdout.log
+          grep '] rust_chrdev: Rust character device sample (exit)$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_miscdev: Rust miscellaneous device sample (init)$' qemu-stdout.log
+          grep '] rust_miscdev: Rust miscellaneous device sample (exit)$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_stack_probing: Rust stack probing sample (init)$' qemu-stdout.log
+          grep '] rust_stack_probing: Large array has length: 514$'      qemu-stdout.log
+          grep '] rust_stack_probing: Rust stack probing sample (exit)$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_semaphore: Rust semaphore sample (init)$' qemu-stdout.log
+          grep '] rust_semaphore: Rust semaphore sample (exit)$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_semaphore_c: Rust semaphore sample (in C, for comparison) (init)$' qemu-stdout.log
+          grep '] rust_semaphore_c: Rust semaphore sample (in C, for comparison) (exit)$' qemu-stdout.log
+
+      - run: |
+          grep '] rust_selftests: Rust self tests (init)$' qemu-stdout.log
+          grep '] rust_selftests: All tests passed. Congratulations!$' qemu-stdout.log
+          grep '] rust_selftests: Rust self tests (exit)$' qemu-stdout.log
+
+      # Report
+      - run: |
+          cat ${{ env.BUILD_DIR }}.config
+
+          ls -l \
+            ${{ env.BUILD_DIR }}samples/rust/*.o \
+            ${{ env.BUILD_DIR }}samples/rust/*.ko \
+            ${{ env.BUILD_DIR }}rust/*.o \
+            ${{ env.BUILD_DIR }}vmlinux \
+            ${{ env.BUILD_DIR }}${{ env.IMAGE_PATH }}
+
+          .github/workflows/size.sh \
+            ${{ env.BUILD_DIR }}samples/rust/*.o \
+            ${{ env.BUILD_DIR }}samples/rust/*.ko \
+            ${{ env.BUILD_DIR }}rust/*.o \
+            ${{ env.BUILD_DIR }}vmlinux
+
+      # Clippy
+      - run: make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 CLIPPY=1
+
+      # Docs
+      - run: make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 rustdoc
+
+      # Tests
+      - run: make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 rusttest
+
+      # Formatting
+      - run: make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 rustfmtcheck
+
+      # Single targets
+      - run: |
+          rm ${{ env.BUILD_DIR }}samples/rust/rust_minimal.o
+
+          make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 samples/rust/rust_minimal.o
+          make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 samples/rust/rust_minimal.rsi
+          make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 samples/rust/rust_minimal.s
+          make ${{ env.MAKE_ARCH }} ${{ env.MAKE_CROSS_COMPILE }} ${{ env.MAKE_LLVM_IAS }} ${{ env.MAKE_TOOLCHAIN }} ${{ env.MAKE_OUTPUT }} ${{ env.MAKE_SYSROOT }} -j3 samples/rust/rust_minimal.ll
+
+          file ${{ env.BUILD_DIR }}samples/rust/rust_minimal.o | grep -F 'ELF'
+          grep -F '#![feature(prelude_import)]' ${{ env.BUILD_DIR }}samples/rust/rust_minimal.rsi
+          grep -F '.text'                       ${{ env.BUILD_DIR }}samples/rust/rust_minimal.s
+          grep -F '; ModuleID'                  ${{ env.BUILD_DIR }}samples/rust/rust_minimal.ll
+
+      # Rust host programs
+      - run: ${{ env.BUILD_DIR }}samples/rust/hostprogs/single | grep -F 'The number is 42.'
+
+      # View changes to ccache
+      - run: ccache -s

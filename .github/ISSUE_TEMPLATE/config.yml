@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Questions, help, feedback, etc.
+    url: https://rust-for-linux.com/contact#zulip-chat
+    about: Please use the Zulip chat.
+
+  - name: Report a security bug
+    url: https://docs.kernel.org/admin-guide/security-bugs.html
+    about: Please read the "Security bugs" page in the kernel documentation.
