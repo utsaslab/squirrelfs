@@ -44,7 +44,7 @@ All steps in this section should be run on the host, regardless of whether you a
 
 ### Option 2 (pre-existing image)
 
-1. Get the VM image: `wget https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (7.8GB)
+1. Get the VM image: `wget https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (8GB)
 2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 25GB)
 3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp 8`
 4. SSH into the VM using `ssh rustfs@localhost -p 2222`. The username and password are both `rustfs`.
