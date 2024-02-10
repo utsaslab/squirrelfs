@@ -4,7 +4,6 @@ use crate::h_inode::*;
 use crate::pm::*;
 use crate::typestate::*;
 use crate::volatile::*;
-
 use core::{
     cmp::Ordering,
     // sync::atomic::{AtomicU64, Ordering},
@@ -160,6 +159,14 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                 }
                 rb_tree.try_insert(current.try_into()?, ())?;
             }
+        }
+        // if there is only one cpu, we may not have inserted the free list earlier
+        if cpus == 1 && free_lists.len() == 0 {
+            let free_list = PageFreeList {
+                free_pages: pages_per_cpu,
+                list: rb_tree,
+            };
+            free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
         }
 
         Ok(Some(PerCpuPageAllocator {
@@ -339,6 +346,7 @@ impl PerCpuPageAllocator {
         }
     }
 
+
     fn dealloc_multiple_page(&self, mut page_list : Cursor<'_, Box<LinkedPage>>) -> Result<()> {
         // hash map to store free list lock for every cpu
         let mut cpu_free_list_map : RBTree<usize, Vec<PageNum>> = RBTree::new(); 
@@ -475,7 +483,6 @@ impl TryFrom<&PageDescriptor> for &DirPageHeader {
 #[derive(Debug)]
 struct DirPage<'a> {
     dentries: &'a mut [HayleyFsDentry],
-    // dentries: &'a mut [HayleyFsDentry; DENTRIES_PER_PAGE],
 }
 
 impl DirPage<'_> {
@@ -483,10 +490,10 @@ impl DirPage<'_> {
         let mut dentry_vec = Vec::new();
         for d in self.dentries.iter() {
             let ino = d.get_ino();
-            if ino != 0 {
+            if !d.is_free() {
                 let name = d.get_name();
                 let virt_addr = d as *const HayleyFsDentry as *const ffi::c_void;
-                dentry_vec.try_push(DentryInfo::new(ino, virt_addr, name))?;
+                dentry_vec.try_push(DentryInfo::new(ino, Some(virt_addr), name, d.is_dir()))?;
             }
         }
         Ok(dentry_vec)
@@ -826,7 +833,7 @@ impl<'a> DirPageWrapper<'a, Clean, ClearIno> {
 }
 
 impl<'a, Op: Initialized> DirPageWrapper<'a, Clean, Op> {
-    pub(crate) fn get_live_dentry_info(&self, sbi: &SbInfo) -> Result<Vec<DentryInfo>> {
+    pub(crate) fn get_alloc_dentry_info(&self, sbi: &SbInfo) -> Result<Vec<DentryInfo>> {
         let dir_page = self.get_dir_page(sbi)?;
         dir_page.get_dentry_info_from_dentries()
     }
@@ -892,7 +899,8 @@ impl<'a, Op: Initialized> DirPageWrapper<'a, Clean, Op> {
 impl<'a, Op> DirPageWrapper<'a, Dirty, Op> {
     pub(crate) fn flush(mut self) -> DirPageWrapper<'a, InFlight, Op> {
         match &self.page.page {
-            Some(page) => hayleyfs_flush_buffer(page, mem::size_of::<DirPageHeader>(), false),
+            // we need to dereference page to ensure that the correct pointer is passed to flush_buffer
+            Some(page) => hayleyfs_flush_buffer(*page, mem::size_of::<DirPageHeader>(), false),
             None => panic!("ERROR: Wrapper does not have a page"),
         };
         let page = self.take_and_make_drop_safe();
@@ -902,6 +910,69 @@ impl<'a, Op> DirPageWrapper<'a, Dirty, Op> {
             page_no: self.page_no,
             page,
         }
+    }
+}
+
+// impl<'a> DirPageWrapper<'a, Clean, Recovery> {
+//     pub(crate) unsafe fn get_recovery_page(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
+//         // use the unchecked variant because the pages may be invalid
+//         let ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page_no)? };
+//         Ok(DirPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: page_no,
+//             page: CheckedPage {
+//                 drop_type: DropType::Panic,
+//                 page: Some(ph),
+//             },
+//         })
+//     }
+
+//     pub(crate) fn recovery_dealloc(mut self, sbi: &SbInfo) -> DirPageWrapper<'a, Dirty, Free> {
+//         unsafe { self.page.dealloc(sbi) };
+//         let page = self.take_and_make_drop_safe();
+//         DirPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: self.page_no,
+//             page,
+//         }
+//     }
+// }
+
+impl DirPageListWrapper<Clean, Recovery> {
+    pub(crate) unsafe fn get_recovery_page(sbi: &SbInfo, page_no: PageNum) -> Result<Self> {
+        // obtain the page descriptor *just* to determine that it is a valid type
+        // for use with DataPageListWrapper
+        let _ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page_no)? };
+        let mut pages = List::new();
+        pages.push_back(Box::try_new(LinkedPage::new(page_no))?);
+        Ok(DirPageListWrapper {
+            state: PhantomData,
+            op: PhantomData,
+            pages,
+        })
+    }
+
+    // Safety: assuming get_recovery_page has been used correctly, only pages
+    // that can be deallocated in recovery will pass typechecking to call
+    // this function
+    pub(crate) fn recovery_dealloc(
+        self,
+        sbi: &SbInfo,
+    ) -> Result<DirPageListWrapper<InFlight, Free>> {
+        // lists in recovery typestate only have one page
+        let pages = self.pages.cursor_front();
+        let page = pages.current();
+        if let Some(page) = page {
+            let ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page.get_page_no())? };
+            unsafe { ph.dealloc(sbi) };
+        }
+        Ok(DirPageListWrapper {
+            state: PhantomData,
+            op: PhantomData,
+            pages: self.pages,
+        })
     }
 }
 
@@ -1390,6 +1461,32 @@ impl<'a, Op> StaticDataPageWrapper<'a, InFlight, Op> {
     }
 }
 
+// impl<'a> StaticDataPageWrapper<'a, Clean, Recovery> {
+//     // SAFETY: this function is only safe to call on orphaned pages during recovery.
+//     // this function is missing validity checks because it needs to be useable with invalid
+//     // inodes after a crash
+//     pub(crate) unsafe fn get_recovery_page(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
+//         // use the unchecked variant because the pages may be invalid
+//         let ph = unsafe { unchecked_new_page_no_to_data_header(sbi, page_no)? };
+//         Ok(StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: page_no,
+//             page: ph,
+//         })
+//     }
+
+//     pub(crate) fn recovery_dealloc(self, sbi: &SbInfo) -> StaticDataPageWrapper<'a, Dirty, Free> {
+//         unsafe { self.page.dealloc(sbi) };
+//         StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: self.page_no,
+//             page: self.page,
+//         }
+//     }
+// }
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct DataPageWrapper<'a, State, Op> {
@@ -1660,7 +1757,7 @@ impl<'a> DataPageWrapper<'a, Clean, Alloc> {
 impl<'a, Op> DataPageWrapper<'a, Dirty, Op> {
     pub(crate) fn flush(mut self) -> DataPageWrapper<'a, InFlight, Op> {
         match &self.page.page {
-            Some(page) => hayleyfs_flush_buffer(page, mem::size_of::<DataPageHeader>(), false),
+            Some(page) => hayleyfs_flush_buffer(*page, mem::size_of::<DataPageHeader>(), false),
             None => panic!("ERROR: Wrapper does not have a page"),
         };
 
@@ -1956,7 +2053,7 @@ impl DataPageListWrapper<Clean, Writeable> {
         sbi: &SbInfo,
         mut len: u64,
         offset: u64,
-    ) -> Result<(u64, DataPageListWrapper<InFlight, Written>)> {
+    ) -> Result<(u64, DataPageListWrapper<InFlight, Zeroed>)> {
         // this is the value of the `offset` field of the page that
         // we want to write to
         let mut page_offset = page_offset(offset)?;
@@ -2021,68 +2118,6 @@ impl DataPageListWrapper<Clean, Writeable> {
         ))
     }
 
-    pub(crate) fn write_pages(
-        self,
-        sbi: &SbInfo,
-        reader: &mut impl IoBufferReader,
-        mut len: u64,
-        offset: u64, // the raw offset provided by the user
-    ) -> Result<(u64, DataPageListWrapper<InFlight, Written>)> {
-        // this is the value of the `offset` field of the page that
-        // we want to write to
-        let mut page_offset = page_offset(offset)?;
-        let mut offset_within_page = offset - page_offset;
-
-        let mut bytes_written = 0;
-        let write_size = len;
-
-        let mut page_list = self.get_page_list_cursor();
-        let mut page = page_list.current();
-        while page.is_some() {
-            if let Some(page) = page {
-                if bytes_written >= write_size {
-                    break;
-                }
-
-                let page_no = page.get_page_no();
-
-                // skip over pages at the head of the list that we are not writing to
-                // this should pretty much never happen so it won't hurt us performance-wise
-                if get_offset_of_page_no(sbi, page_no)? < page_offset {
-                    page_list.move_next();
-                } else {
-                    // TODO: safe wrapper
-                    let ptr = unsafe { page_no_to_page(sbi, page_no)? };
-                    let bytes_to_write = if len < HAYLEYFS_PAGESIZE - offset_within_page {
-                        len
-                    } else {
-                        HAYLEYFS_PAGESIZE - offset_within_page
-                    };
-                    let bytes_to_write =
-                        unsafe { write_to_page(reader, ptr, offset_within_page, bytes_to_write)? };
-
-                    bytes_written += bytes_to_write;
-                    page_offset += HAYLEYFS_PAGESIZE;
-                    len -= bytes_to_write;
-                    offset_within_page = 0;
-                    page_list.move_next();
-                }
-            }
-            page = page_list.current();
-        }
-
-        Ok((
-            bytes_written,
-            DataPageListWrapper {
-                state: PhantomData,
-                op: PhantomData,
-                offset: self.offset,
-                num_pages: self.num_pages,
-                pages: self.pages,
-            },
-        ))
-    }
-
     // persistence typestate breaks down a little here, since someone could have
     // (and likely has) written to the msync'ed pages and left them in a dirty
     // and/or inflight state. we can't represent individual page typestates and
@@ -2114,6 +2149,100 @@ impl DataPageListWrapper<Clean, Writeable> {
             num_pages: self.num_pages,
             pages: self.pages,
         })
+    }
+}
+
+impl<S: CanWrite> DataPageListWrapper<Clean, S> {
+    pub(crate) fn write_pages(
+        self,
+        sbi: &SbInfo,
+        reader: &mut impl IoBufferReader,
+        mut len: u64,
+        offset: u64, // the raw offset provided by the user
+    ) -> Result<(u64, DataPageListWrapper<InFlight, Written>)> {
+        // this is the value of the `offset` field of the page that
+        // we want to write to
+        let mut page_offset = page_offset(offset)?;
+        let mut offset_within_page = offset - page_offset;
+
+        let mut bytes_written = 0;
+        let write_size = len;
+
+        let mut page_list = self.get_page_list_cursor();
+        let mut page = page_list.current();
+        while page.is_some() {
+            if let Some(page) = page {
+                if bytes_written >= write_size {
+                    break;
+                }
+
+                let page_no = page.get_page_no();
+
+                // skip over pages at the head of the list that we are not writing to
+                // this only happens if we are writing to an offset beyond the current end of the 
+                // file and have allocated pages to cover the gap; in this case, we should zero 
+                // these pages to make sure we are not accidentally exposing old data
+                // TODO: a more efficient implementation would be to not allocate these pages 
+                // at all and instead have a (volatile?) representation of zeroed pages
+                if get_offset_of_page_no(sbi, page_no)? < page_offset {
+                    // TODO: this code is identical to some code in zero_pages -- refactor
+                    // TODO: safe wrapper
+                    let ptr = unsafe { page_no_to_page(sbi, page_no)? };
+                    let bytes_to_write = if len < HAYLEYFS_PAGESIZE - offset_within_page {
+                        len
+                    } else {
+                        HAYLEYFS_PAGESIZE - offset_within_page
+                    };
+                    // let bytes_to_write =
+                    //     unsafe { write_to_page(reader, ptr, offset_within_page, bytes_to_write)? };
+                    pr_info!("zeroing {:?} bytes\n", bytes_to_write);
+                    unsafe {
+                        memset_nt(
+                            (ptr as *mut u8).offset(offset_within_page.try_into()?)
+                                as *mut ffi::c_void,
+                            0,
+                            bytes_to_write.try_into()?,
+                            false,
+                        );
+                    }
+                    
+                    // these variables don't count pages that need to be zeroed
+                    // so we do not update them here to make sure they remain correct
+                    // bytes_written += bytes_to_write;
+                    // page_offset += HAYLEYFS_PAGESIZE;
+                    // len -= bytes_to_write;
+                    // offset_within_page = 0;
+                    page_list.move_next();
+                } else {
+                    // TODO: safe wrapper
+                    let ptr = unsafe { page_no_to_page(sbi, page_no)? };
+                    let bytes_to_write = if len < HAYLEYFS_PAGESIZE - offset_within_page {
+                        len
+                    } else {
+                        HAYLEYFS_PAGESIZE - offset_within_page
+                    };
+                    let bytes_to_write =
+                        unsafe { write_to_page(reader, ptr, offset_within_page, bytes_to_write)? };
+                    bytes_written += bytes_to_write;
+                    page_offset += HAYLEYFS_PAGESIZE;
+                    len -= bytes_to_write;
+                    offset_within_page = 0;
+                    page_list.move_next();
+                }
+            }
+            page = page_list.current();
+        }
+
+        Ok((
+            bytes_written,
+            DataPageListWrapper {
+                state: PhantomData,
+                op: PhantomData,
+                offset: self.offset,
+                num_pages: self.num_pages,
+                pages: self.pages,
+            },
+        ))
     }
 }
 
@@ -2250,6 +2379,46 @@ impl DataPageListWrapper<Clean, Dealloc> {
             num_pages: self.num_pages,
             pages: self.pages,
         }
+    }
+}
+
+impl DataPageListWrapper<Clean, Recovery> {
+    pub(crate) unsafe fn get_recovery_page(sbi: &SbInfo, page_no: PageNum) -> Result<Self> {
+        // obtain the page descriptor *just* to determine that it is a valid type
+        // for use with DataPageListWrapper
+        let _ph = unsafe { unchecked_new_page_no_to_data_header(sbi, page_no)? };
+        let mut pages = List::new();
+        pages.push_back(Box::try_new(LinkedPage::new(page_no))?);
+        Ok(DataPageListWrapper {
+            state: PhantomData,
+            op: PhantomData,
+            offset: 0, // the page may not have an offset so we ignore this value in Recovery typestate
+            num_pages: 1,
+            pages,
+        })
+    }
+
+    // Safety: assuming get_recovery_page has been used correctly, only pages
+    // that can be deallocated in recovery will pass typechecking to call
+    // this function
+    pub(crate) fn recovery_dealloc(
+        self,
+        sbi: &SbInfo,
+    ) -> Result<DataPageListWrapper<InFlight, Free>> {
+        // lists in recovery typestate only have one page
+        let pages = self.pages.cursor_front();
+        let page = pages.current();
+        if let Some(page) = page {
+            let ph = unsafe { unchecked_new_page_no_to_data_header(sbi, page.get_page_no())? };
+            unsafe { ph.dealloc(sbi) };
+        }
+        Ok(DataPageListWrapper {
+            state: PhantomData,
+            op: PhantomData,
+            offset: self.offset,
+            num_pages: self.num_pages,
+            pages: self.pages,
+        })
     }
 }
 
