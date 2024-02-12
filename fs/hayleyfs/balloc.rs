@@ -294,16 +294,19 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
     fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
-            let mut page_list = pages.get_page_list_cursor();
-            let mut page = page_list.current();
-            while page.is_some() {
-                if let Some(page) = page {
-                    // TODO: refactor to avoid acquiring lock on every iteration
-                    allocator.dealloc_page(page.get_page_no())?;
-                    page_list.move_next();
-                }
-                page = page_list.current();
-            }
+            let page_list = pages.get_page_list_cursor();
+            // let mut page_list = pages.get_page_list_cursor();
+            // let mut page = page_list.current();
+            // while page.is_some() {
+            //     if let Some(page) = page {
+            //         // TODO: refactor to avoid acquiring lock on every iteration
+            //         allocator.dealloc_page(page.get_page_no())?;
+            //         page_list.move_next();
+            //     }
+            //     page = page_list.current();
+            // }
+            // Ok(())
+            allocator.dealloc_multiple_page(page_list)?; 
             Ok(())
         } else {
             pr_info!("ERROR: page allocator is uninitialized\n");
