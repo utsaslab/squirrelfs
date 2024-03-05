@@ -594,7 +594,6 @@ pub(crate) fn hayleyfs_readdir(
         let dentry = match dentries.get(j) {
             Some(dentry) => dentry,
             None => {
-                unsafe { (*ctx).pos += i };
                 return Ok(0);
             }
         };
@@ -609,6 +608,7 @@ pub(crate) fn hayleyfs_readdir(
             }
         };
         let result = unsafe {
+            pr_info!("emitting with pos {:?}\n", unsafe { (*ctx).pos });
             bindings::dir_emit(
                 ctx,
                 name.as_char_ptr(),
@@ -618,11 +618,10 @@ pub(crate) fn hayleyfs_readdir(
             )
         };
         if !result {
-            unsafe { (*ctx).pos += i };
             return Ok(0);
         }
-        i += 1;
+        unsafe { (*ctx).pos = j.try_into()? };
     }
-    unsafe { (*ctx).pos += i };
+    unsafe { (*ctx).pos = i64::MAX };
     Ok(0)
 }
