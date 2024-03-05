@@ -76,6 +76,7 @@ If using a VM, run these steps on the VM.
 
 1. `cd` to `squirrelfs/`
 2. Copy `SQUIRRELFS_CONFIG` to `.config`.
+    - Note: this step should only be done after installing Rust dependencies with `dependencies/rust_dependencies.sh`. If Rust is not properly set up before copying the configuration file, one required option (`CONFIG_RUST`) will be set incorrectly.
 3. Build the kernel with `make LLVM=-14 -j <number of cores>`. `LLVM=14` is necessary to build Rust components. (45 minutes on a QEMU/KVM VM with 16GB RAM and 8 cores)
     - Note: while building the kernel, it may prompt you to select some configuration options interactively.
     - Select the first option (i.e. 1,2,3 => choose 1 OR N/y => choose N)
