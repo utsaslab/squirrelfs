@@ -608,7 +608,6 @@ pub(crate) fn hayleyfs_readdir(
             }
         };
         let result = unsafe {
-            pr_info!("emitting with pos {:?}\n", unsafe { (*ctx).pos });
             bindings::dir_emit(
                 ctx,
                 name.as_char_ptr(),
