@@ -594,6 +594,7 @@ pub(crate) fn hayleyfs_readdir(
         let dentry = match dentries.get(j) {
             Some(dentry) => dentry,
             None => {
+                unsafe { (*ctx).pos = j.try_into()? };
                 return Ok(0);
             }
         };
@@ -612,14 +613,14 @@ pub(crate) fn hayleyfs_readdir(
                 ctx,
                 name.as_char_ptr(),
                 name.len().try_into()?,
-                parent_inode_info.get_ino(),
+                dentry.get_ino(),
                 file_type,
             )
         };
         if !result {
             return Ok(0);
         }
-        unsafe { (*ctx).pos = j.try_into()? };
+        unsafe { (*ctx).pos += 1 };
     }
     unsafe { (*ctx).pos = i64::MAX };
     Ok(0)
