@@ -19,7 +19,7 @@ use kernel::{
     linked_list::{Cursor, List},
     linked_list::{GetLinks, Links},
     rbtree::RBTree,
-    sync::{smutex::Mutex, Arc},
+    sync::{smutex::Mutex, Arc, CondVar},
 };
 
 pub(crate) trait PageAllocator {
@@ -59,6 +59,38 @@ pub(crate) struct PerCpuPageAllocator {
     start: u64,
 }
 
+fn free_list_from_range(
+    free_list: Arc<Mutex<PageFreeList>>,
+    cpu_num: u32,
+    num_cpus: u32,
+    pages_per_cpu: u64,
+    start_page: u64,
+    total_pages: u64,
+) -> Result<()> {
+    pr_info!("free list for cpu {:?}\n", cpu_num);
+    let free_list = free_list.clone();
+    let mut free_list = free_list.lock();
+    let end_page = if (start_page + pages_per_cpu) > total_pages {
+        total_pages
+    } else {
+        start_page + pages_per_cpu
+    };
+    for page in start_page..end_page {
+        free_list.list.try_insert(page, ())?;
+    }
+    let mut guard = COUNT.lock();
+    *guard += 1;
+    if *guard == num_cpus {
+        ALL_CPUS_DONE.notify_all();
+    }
+    Ok(())
+}
+
+kernel::init_static_sync! {
+    static COUNT: Mutex<u32> = 0;
+    static ALL_CPUS_DONE: CondVar;
+}
+
 impl PageAllocator for Option<PerCpuPageAllocator> {
     fn new_from_range(val: u64, dev_pages: u64, cpus: u32) -> Result<Self> {
         let total_pages = dev_pages - val;
@@ -67,26 +99,33 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         pr_info!("pages per cpu: {:?}\n", pages_per_cpu);
         let mut current_page = val;
         let mut free_lists = Vec::new();
-        for _ in 0..cpus {
-            let mut rb_tree = RBTree::new();
-            let upper = if (current_page + pages_per_cpu) < dev_pages {
-                current_page + pages_per_cpu
-            } else {
-                dev_pages
-            };
-            for i in current_page..upper {
-                rb_tree.try_insert(i, ())?;
-            }
-            current_page = current_page + pages_per_cpu;
-            let free_list = PageFreeList {
+
+        for cpu in 0..cpus {
+            let free_list = Arc::try_new(Mutex::new(PageFreeList {
                 free_pages: pages_per_cpu,
-                list: rb_tree,
-            };
-            free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
-            if upper == dev_pages {
-                break;
-            }
+                list: RBTree::new(),
+            }))?;
+            let free_list_clone = free_list.clone();
+            kernel::task::Task::spawn(fmt!("cpu{cpu}"), move || {
+                free_list_from_range(
+                    free_list_clone,
+                    cpu,
+                    cpus,
+                    pages_per_cpu,
+                    current_page,
+                    dev_pages,
+                );
+            });
+            current_page += pages_per_cpu;
+            free_lists.try_push(free_list)?;
         }
+
+        pr_info!("waiting for free list construction\n");
+        let mut guard = COUNT.lock();
+        while *guard != cpus {
+            ALL_CPUS_DONE.wait(&mut guard);
+        }
+        pr_info!("free lists constructed!\n");
 
         Ok(Some(PerCpuPageAllocator {
             free_lists,
@@ -2111,10 +2150,10 @@ impl<S: CanWrite> DataPageListWrapper<Clean, S> {
                 let page_no = page.get_page_no();
 
                 // skip over pages at the head of the list that we are not writing to
-                // this only happens if we are writing to an offset beyond the current end of the 
-                // file and have allocated pages to cover the gap; in this case, we should zero 
+                // this only happens if we are writing to an offset beyond the current end of the
+                // file and have allocated pages to cover the gap; in this case, we should zero
                 // these pages to make sure we are not accidentally exposing old data
-                // TODO: a more efficient implementation would be to not allocate these pages 
+                // TODO: a more efficient implementation would be to not allocate these pages
                 // at all and instead have a (volatile?) representation of zeroed pages
                 if get_offset_of_page_no(sbi, page_no)? < page_offset {
                     // TODO: this code is identical to some code in zero_pages -- refactor
@@ -2137,7 +2176,7 @@ impl<S: CanWrite> DataPageListWrapper<Clean, S> {
                             false,
                         );
                     }
-                    
+
                     // these variables don't count pages that need to be zeroed
                     // so we do not update them here to make sure they remain correct
                     // bytes_written += bytes_to_write;

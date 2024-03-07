@@ -187,6 +187,8 @@ pub struct RBTree<K, V> {
     _p: PhantomData<Node<K, V>>,
 }
 
+unsafe impl<K, V> Send for RBTree<K, V> {}
+
 impl<K, V> RBTree<K, V> {
     /// Creates a new and empty tree.
     pub fn new() -> Self {
