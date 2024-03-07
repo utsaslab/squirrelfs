@@ -588,7 +588,6 @@ pub(crate) fn hayleyfs_readdir(
             return Ok(0);
         }
     }
-    let mut i = 0;
     let cur_pos: usize = unsafe { (*ctx).pos.try_into()? };
     for j in cur_pos..dentries.len() {
         let dentry = match dentries.get(j) {
