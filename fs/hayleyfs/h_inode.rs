@@ -103,6 +103,21 @@ impl LinkedInode {
     }
 }
 
+pub(crate) struct InodeList {
+    pub(crate) list: List<Box<LinkedInode>>
+}
+
+impl InodeList {
+    pub(crate) fn new() -> Self {
+        Self {
+            list: List::new(),
+        }
+    }
+}
+
+unsafe impl Send for InodeList {}
+unsafe impl Sync for InodeList {}
+
 #[allow(dead_code)]
 pub(crate) struct InodeWrapper<'a, State, Op, Type> {
     state: PhantomData<State>,
@@ -1027,7 +1042,7 @@ impl<'a, Op, Type> InodeWrapper<'a, InFlight, Op, Type> {
 /// Interface for volatile inode allocator structures
 pub(crate) trait InodeAllocator {
     fn new(val: u64, num_inodes: u64) -> Result<Self> where Self: Sized;
-    fn new_from_alloc_vec(alloc_inodes: List<Box<LinkedInode>>, num_alloc_inodes: u64, start: u64, num_inodes: u64) -> Result<Self> where Self: Sized;
+    fn new_from_alloc_vec(alloc_inodes: Arc<Mutex<InodeList>>, num_alloc_inodes: u64, start: u64, num_inodes: u64) -> Result<Self> where Self: Sized;
     fn alloc_ino(&self, sbi: &SbInfo) -> Result<InodeNum>;
     // TODO: should this be unsafe or require a free inode wrapper?
     fn dealloc_ino(&self, ino: InodeNum, sbi: &SbInfo) -> Result<()>;
@@ -1048,10 +1063,11 @@ impl InodeAllocator for RBInodeAllocator {
         })
     }
 
-    fn new_from_alloc_vec(alloc_inodes: List<Box<LinkedInode>>, num_alloc_inodes: u64, start: u64, num_inodes: u64) -> Result<Self> {
+    fn new_from_alloc_vec(alloc_inodes: Arc<Mutex<InodeList>>, num_alloc_inodes: u64, start: u64, num_inodes: u64) -> Result<Self> {
         let mut rb = RBTree::new();
         let mut cur_ino = start;
-        let mut inode_cursor = alloc_inodes.cursor_front();
+        let mut alloc_inodes = alloc_inodes.lock();
+        let mut inode_cursor = alloc_inodes.list.cursor_front();
         let mut current_alloc_inode = inode_cursor.current();
 
         // skip inode 1

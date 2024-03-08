@@ -88,7 +88,7 @@ fn free_list_from_range(
 kernel::init_static_sync! {
     static COUNT: Mutex<u32> = 0;
     static ALL_CPUS_DONE: CondVar;
-    static INIT_LOCK: Mutex<()> = (); // janky fix to prevent multiple mounts using static vars at the same time
+    static INIT_ALLOCATOR_LOCK: Mutex<()> = (); // janky fix to prevent multiple mounts using static vars at the same time
 }
 
 impl PageAllocator for Option<PerCpuPageAllocator> {
@@ -103,7 +103,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         // acquire the init lock to prevent other mounting fses from using the
         // static variables until we are done with them
         // TODO: make them non-static so you don't have to do this
-        let _init_guard = INIT_LOCK.lock();
+        let _init_guard = INIT_ALLOCATOR_LOCK.lock();
         {
             let mut guard = COUNT.lock();
             *guard = 0;
@@ -129,12 +129,10 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
             free_lists.try_push(free_list)?;
         }
 
-        pr_info!("waiting for free list construction\n");
         let mut guard = COUNT.lock();
         while *guard < cpus {
             ALL_CPUS_DONE.wait(&mut guard);
         }
-        pr_info!("free lists constructed!\n");
 
         Ok(Some(PerCpuPageAllocator {
             free_lists,

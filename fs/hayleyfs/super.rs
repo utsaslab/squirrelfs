@@ -8,7 +8,13 @@ use defs::*;
 use h_dir::*;
 use h_inode::*;
 use kernel::prelude::*;
-use kernel::{bindings, c_str, fs, linked_list::List, rbtree::RBTree, types::ForeignOwnable};
+use kernel::{
+    bindings, c_str, fs,
+    linked_list::List,
+    rbtree::RBTree,
+    sync::{smutex::Mutex, Arc, CondVar, Guard},
+    types::ForeignOwnable,
+};
 use namei::*;
 use pm::*;
 use typestate::*;
@@ -353,6 +359,8 @@ unsafe fn init_fs<T: fs::Type + ?Sized>(
 
     unsafe {
         let data_page_start = sbi.get_data_pages_start_page() * HAYLEYFS_PAGESIZE;
+
+        // note: parallelizing this operation does not improve init time
         memset_nt(
             sbi.get_virt_addr() as *mut ffi::c_void,
             0,
@@ -474,8 +482,59 @@ fn recover_all_renames(sbi: &SbInfo) -> Result<()> {
     Ok(())
 }
 
+kernel::init_static_sync! {
+    static INODE_SCAN_LOCK: Mutex<bool> = false;
+    static PAGE_SCAN_LOCK: Mutex<bool> = false;
+    static INODE_SCAN_DONE: CondVar;
+    static PAGE_SCAN_DONE: CondVar;
+    static REMOUNT_LOCK: Mutex<()> = (); // janky fix to prevent multiple mounts using static vars at the same time
+}
+
+// NOTE: lock acquisition order is very important here
+fn scan_inode_table(
+    inode_table: &mut [HayleyFsInode],
+    recovering: bool,
+    alloc_inode_list: Arc<Mutex<InodeList>>,
+    orphaned_inodes: Arc<Mutex<RBTree<InodeNum, ()>>>,
+    persistent_link_counts: Arc<Mutex<RBTree<InodeNum, u16>>>,
+    num_alloc_inodes: &mut u64,
+) {
+    let mut alloc_inode_list = alloc_inode_list.lock();
+    let mut orphaned_inodes = orphaned_inodes.lock();
+    let mut persistent_link_counts = persistent_link_counts.lock();
+    // 2. scan the inode table to determine which inodes are allocated
+    // TODO: this scan will change significantly if the inode table is ever
+    // not a single contiguous array
+
+    for (i, inode) in inode_table.iter().enumerate() {
+        if !inode.is_free() && i != 0 {
+            alloc_inode_list
+                .list
+                .push_back(Box::try_new(LinkedInode::new(i.try_into().unwrap())).unwrap());
+            persistent_link_counts
+                .try_insert(i.try_into().unwrap(), inode.get_link_count())
+                .unwrap();
+            if recovering {
+                // if this inode is not orphaned, we'll remove it during our scan later
+                // TODO: don't add to both the alloc inode list and the orphaned inodes list; you don't need both?
+                orphaned_inodes
+                    .try_insert(i.try_into().unwrap(), ())
+                    .unwrap();
+            }
+            // TODO: do this later?
+            // sbi.inc_inodes_in_use();
+            *num_alloc_inodes += 1;
+        }
+    }
+
+    let mut guard = INODE_SCAN_LOCK.lock();
+    *guard = true;
+    INODE_SCAN_DONE.notify_all();
+}
+
 fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
-    let mut alloc_inode_list: List<Box<LinkedInode>> = List::new();
+    // let mut alloc_inode_list: List<Box<LinkedInode>> = List::new();
+    let mut alloc_inode_list = Arc::try_new(Mutex::new(InodeList::new()))?;
     let mut num_alloc_inodes = 0;
     let mut alloc_page_list: List<Box<LinkedPage>> = List::new();
     let mut num_alloc_pages = 0;
@@ -484,13 +543,15 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let mut live_inode_list: List<Box<LinkedInode>> = List::new();
     let mut processed_live_inodes: RBTree<InodeNum, ()> = RBTree::new(); // rbtree as a set
 
-    let mut orphaned_inodes: RBTree<InodeNum, ()> = RBTree::new();
+    let mut orphaned_inodes: Arc<Mutex<RBTree<InodeNum, ()>>> =
+        Arc::try_new(Mutex::new(RBTree::new()))?;
     let mut orphaned_pages: RBTree<PageNum, ()> = RBTree::new();
     let mut orphaned_dentries: Vec<DentryInfo> = Vec::new(); // this is unlikely to get large enough to cause problems
 
     // these are used to determine if we have link count leaks
     let mut real_link_counts: RBTree<InodeNum, u16> = RBTree::new();
-    let mut persistent_link_counts: RBTree<InodeNum, u16> = RBTree::new();
+    let mut persistent_link_counts: Arc<Mutex<RBTree<InodeNum, u16>>> =
+        Arc::try_new(Mutex::new(RBTree::new()))?;
 
     // keeps track of maximum inode/page number in use to recreate the allocator
     let mut max_inode = 0;
@@ -515,22 +576,50 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     // let recovering = true;
     pr_info!("Recovering: {:?}\n", recovering);
 
+    {
+        let mut guard = INODE_SCAN_LOCK.lock();
+        *guard = false;
+    }
+
     // 2. scan the inode table to determine which inodes are allocated
     // TODO: this scan will change significantly if the inode table is ever
     // not a single contiguous array
-    let inode_table = sbi.get_inode_table()?;
-    for (i, inode) in inode_table.iter().enumerate() {
-        if !inode.is_free() && i != 0 {
-            alloc_inode_list.push_back(Box::try_new(LinkedInode::new(i.try_into()?))?);
-            persistent_link_counts.try_insert(i.try_into()?, inode.get_link_count())?;
-            if recovering {
-                // if this inode is not orphaned, we'll remove it during our scan later
-                orphaned_inodes.try_insert(i.try_into()?, ())?;
-            }
-            sbi.inc_inodes_in_use();
-            num_alloc_inodes += 1;
-        }
+    // let inode_table = sbi.get_inode_table()?;
+    // for (i, inode) in inode_table.iter().enumerate() {
+    //     if !inode.is_free() && i != 0 {
+    //         alloc_inode_list.push_back(Box::try_new(LinkedInode::new(i.try_into()?))?);
+    //         persistent_link_counts.try_insert(i.try_into()?, inode.get_link_count())?;
+    //         if recovering {
+    //             // if this inode is not orphaned, we'll remove it during our scan later
+    //             orphaned_inodes.try_insert(i.try_into()?, ())?;
+    //         }
+    //         sbi.inc_inodes_in_use();
+    //         num_alloc_inodes += 1;
+    //     }
+    // }
+    let alloc_inode_list_clone = alloc_inode_list.clone();
+    let orphaned_inodes_clone = orphaned_inodes.clone();
+    let persistent_link_counts_clone = persistent_link_counts.clone();
+    let inode_table = sbi.get_inode_table().unwrap();
+    kernel::task::Task::spawn(fmt!("inode_scan"), move || {
+        scan_inode_table(
+            inode_table,
+            recovering,
+            alloc_inode_list_clone,
+            orphaned_inodes_clone,
+            persistent_link_counts_clone,
+            &mut num_alloc_inodes,
+        );
+    });
+
+    let mut guard = INODE_SCAN_LOCK.lock();
+    while !*guard {
+        INODE_SCAN_DONE.wait(&mut guard);
     }
+
+    let mut orphaned_inodes = orphaned_inodes.lock();
+    let mut persistent_link_counts = persistent_link_counts.lock();
+
     if recovering {
         // root is always live so make sure it is not counted as an orphan
         orphaned_inodes.remove(&1);
@@ -719,7 +808,7 @@ fn build_tree(
 
 fn free_orphans(
     sbi: &SbInfo,
-    orphaned_inodes: RBTree<InodeNum, ()>,
+    orphaned_inodes: Guard<'_, Mutex<RBTree<InodeNum, ()>>>,
     orphaned_pages: RBTree<PageNum, ()>,
     orphaned_dentries: Vec<DentryInfo>,
     persistent_link_counts: &mut RBTree<InodeNum, u16>,
@@ -768,7 +857,7 @@ fn free_orphans(
 
 fn fix_link_counts(
     sbi: &SbInfo,
-    persistent_link_counts: RBTree<InodeNum, u16>,
+    persistent_link_counts: Guard<'_, Mutex<RBTree<InodeNum, u16>>>,
     real_link_counts: RBTree<InodeNum, u16>,
 ) -> Result<()> {
     // TODO: can we do this faster than iterating over all of the inodes?
