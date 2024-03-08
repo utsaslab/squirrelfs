@@ -61,13 +61,12 @@ pub(crate) struct PerCpuPageAllocator {
 
 fn free_list_from_range(
     free_list: Arc<Mutex<PageFreeList>>,
-    cpu_num: u32,
+    _cpu_num: u32,
     num_cpus: u32,
     pages_per_cpu: u64,
     start_page: u64,
     total_pages: u64,
 ) -> Result<()> {
-    pr_info!("free list for cpu {:?}\n", cpu_num);
     let free_list = free_list.clone();
     let mut free_list = free_list.lock();
     let end_page = if (start_page + pages_per_cpu) > total_pages {
@@ -80,7 +79,7 @@ fn free_list_from_range(
     }
     let mut guard = COUNT.lock();
     *guard += 1;
-    if *guard == num_cpus {
+    if *guard >= num_cpus {
         ALL_CPUS_DONE.notify_all();
     }
     Ok(())
@@ -89,6 +88,7 @@ fn free_list_from_range(
 kernel::init_static_sync! {
     static COUNT: Mutex<u32> = 0;
     static ALL_CPUS_DONE: CondVar;
+    static INIT_LOCK: Mutex<()> = (); // janky fix to prevent multiple mounts using static vars at the same time
 }
 
 impl PageAllocator for Option<PerCpuPageAllocator> {
@@ -99,6 +99,15 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         pr_info!("pages per cpu: {:?}\n", pages_per_cpu);
         let mut current_page = val;
         let mut free_lists = Vec::new();
+
+        // acquire the init lock to prevent other mounting fses from using the
+        // static variables until we are done with them
+        // TODO: make them non-static so you don't have to do this
+        let _init_guard = INIT_LOCK.lock();
+        {
+            let mut guard = COUNT.lock();
+            *guard = 0;
+        }
 
         for cpu in 0..cpus {
             let free_list = Arc::try_new(Mutex::new(PageFreeList {
@@ -122,7 +131,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
         pr_info!("waiting for free list construction\n");
         let mut guard = COUNT.lock();
-        while *guard != cpus {
+        while *guard < cpus {
             ALL_CPUS_DONE.wait(&mut guard);
         }
         pr_info!("free lists constructed!\n");
