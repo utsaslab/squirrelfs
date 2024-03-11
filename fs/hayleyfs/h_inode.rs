@@ -1066,7 +1066,7 @@ impl InodeAllocator for RBInodeAllocator {
     fn new_from_alloc_vec(alloc_inodes: Arc<Mutex<InodeList>>, num_alloc_inodes: u64, start: u64, num_inodes: u64) -> Result<Self> {
         let mut rb = RBTree::new();
         let mut cur_ino = start;
-        let mut alloc_inodes = alloc_inodes.lock();
+        let alloc_inodes = alloc_inodes.lock();
         let mut inode_cursor = alloc_inodes.list.cursor_front();
         let mut current_alloc_inode = inode_cursor.current();
 

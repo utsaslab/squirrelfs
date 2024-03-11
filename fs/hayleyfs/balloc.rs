@@ -19,7 +19,7 @@ use kernel::{
     linked_list::{Cursor, List},
     linked_list::{GetLinks, Links},
     rbtree::RBTree,
-    sync::{smutex::Mutex, Arc, CondVar},
+    sync::{smutex::Mutex, Arc, CondVar, Guard},
 };
 
 pub(crate) trait PageAllocator {
@@ -27,7 +27,7 @@ pub(crate) trait PageAllocator {
     where
         Self: Sized;
     fn new_from_alloc_vec(
-        alloc_pages: List<Box<LinkedPage>>,
+        alloc_pages: Guard<'_, Mutex<PageList>>,
         num_alloc_pages: u64,
         start: u64,
         dev_pages: u64,
@@ -59,6 +59,7 @@ pub(crate) struct PerCpuPageAllocator {
     start: u64,
 }
 
+// TODO: error handling
 fn free_list_from_range(
     free_list: Arc<Mutex<PageFreeList>>,
     _cpu_num: u32,
@@ -66,7 +67,7 @@ fn free_list_from_range(
     pages_per_cpu: u64,
     start_page: u64,
     total_pages: u64,
-) -> Result<()> {
+) {
     let free_list = free_list.clone();
     let mut free_list = free_list.lock();
     let end_page = if (start_page + pages_per_cpu) > total_pages {
@@ -75,14 +76,13 @@ fn free_list_from_range(
         start_page + pages_per_cpu
     };
     for page in start_page..end_page {
-        free_list.list.try_insert(page, ())?;
+        free_list.list.try_insert(page, ()).unwrap();
     }
     let mut guard = COUNT.lock();
     *guard += 1;
     if *guard >= num_cpus {
         ALL_CPUS_DONE.notify_all();
     }
-    Ok(())
 }
 
 kernel::init_static_sync! {
@@ -124,14 +124,14 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                     current_page,
                     dev_pages,
                 );
-            });
+            })?;
             current_page += pages_per_cpu;
             free_lists.try_push(free_list)?;
         }
 
         let mut guard = COUNT.lock();
         while *guard < cpus {
-            ALL_CPUS_DONE.wait(&mut guard);
+            let _ = ALL_CPUS_DONE.wait(&mut guard);
         }
 
         Ok(Some(PerCpuPageAllocator {
@@ -145,7 +145,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
     /// alloc_pages must be in sorted order. only pages between start and dev_pages
     /// will be added to the allocator
     fn new_from_alloc_vec(
-        alloc_pages: List<Box<LinkedPage>>,
+        alloc_pages: Guard<'_, Mutex<PageList>>,
         num_alloc_pages: u64,
         start: u64,
         dev_pages: u64,
@@ -155,7 +155,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         let cpus_u64: u64 = cpus.into();
         let pages_per_cpu = total_pages / cpus_u64;
         let mut free_lists = Vec::new();
-        let mut page_cursor = alloc_pages.cursor_front();
+        let mut page_cursor = alloc_pages.list.cursor_front();
         let mut current_alloc_page = page_cursor.current();
         let mut current_page = start;
         let mut current_cpu_start = start; // used to keep track of when to move to the next cpu pool
@@ -1842,6 +1842,19 @@ impl LinkedPage {
         self.page_no
     }
 }
+
+pub(crate) struct PageList {
+    pub(crate) list: List<Box<LinkedPage>>,
+}
+
+impl PageList {
+    pub(crate) fn new() -> Self {
+        Self { list: List::new() }
+    }
+}
+
+unsafe impl Send for PageList {}
+unsafe impl Sync for PageList {}
 
 /// Represents a typestate-ful section of a file.
 #[allow(dead_code)]
