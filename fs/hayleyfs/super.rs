@@ -501,12 +501,12 @@ fn scan_inode_table(
     recovering: bool,
     alloc_inode_list: Arc<Mutex<InodeList>>,
     orphaned_inodes: Arc<Mutex<RBTree<InodeNum, ()>>>,
-    persistent_link_counts: Arc<Mutex<RBTree<InodeNum, u16>>>,
+    link_counts: Arc<Mutex<RBTree<InodeNum, LinkCounts>>>,
     num_alloc_inodes: &mut u64,
 ) {
     let mut alloc_inode_list = alloc_inode_list.lock();
     let mut orphaned_inodes = orphaned_inodes.lock();
-    let mut persistent_link_counts = persistent_link_counts.lock();
+    let mut link_counts = link_counts.lock();
     // 2. scan the inode table to determine which inodes are allocated
     // TODO: this scan will change significantly if the inode table is ever
     // not a single contiguous array
@@ -516,8 +516,14 @@ fn scan_inode_table(
             alloc_inode_list
                 .list
                 .push_back(Box::try_new(LinkedInode::new(i.try_into().unwrap())).unwrap());
-            persistent_link_counts
-                .try_insert(i.try_into().unwrap(), inode.get_link_count())
+            link_counts
+                .try_insert(
+                    i.try_into().unwrap(),
+                    LinkCounts {
+                        real: 0,
+                        persistent: inode.get_link_count(),
+                    },
+                )
                 .unwrap();
             if recovering {
                 // if this inode is not orphaned, we'll remove it during our scan later
@@ -550,10 +556,6 @@ fn scan_page_descriptor_table_worker(
 ) {
     for (i, desc) in page_desc_table.iter().enumerate() {
         if !desc.is_free() {
-            //         // sbi.inc_blocks_in_use();
-            //         if i > max_page.try_into().unwrap() {
-            //             max_page = i.try_into().unwrap();
-            //         }
             let index: u64 = i.try_into().unwrap();
             // add pages to maps that associate inodes with the pages they own
             // we don't add them to the index yet because an initialized page
@@ -656,6 +658,12 @@ fn scan_page_descriptor_table(
     PAGE_SCAN_DONE.notify_all();
 }
 
+// (real, persistent)
+struct LinkCounts {
+    real: u16,
+    persistent: u16,
+}
+
 fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let data_pages_start = sbi.get_data_pages_start_page();
     let num_cpus = sbi.cpus;
@@ -677,9 +685,8 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let orphaned_pages: Arc<Mutex<RBTree<PageNum, ()>>> = Arc::try_new(Mutex::new(RBTree::new()))?;
     let mut orphaned_dentries: Vec<DentryInfo> = Vec::new(); // this is unlikely to get large enough to cause problems
 
-    // these are used to determine if we have link count leaks
-    let mut real_link_counts: RBTree<InodeNum, u16> = RBTree::new();
-    let persistent_link_counts: Arc<Mutex<RBTree<InodeNum, u16>>> =
+    // this is used to determine if we have link count leaks
+    let link_counts: Arc<Mutex<RBTree<InodeNum, LinkCounts>>> =
         Arc::try_new(Mutex::new(RBTree::new()))?;
 
     // keeps track of maximum inode/page number in use to recreate the allocator
@@ -709,12 +716,14 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         *guard = false;
         let mut guard = PAGE_SCAN_LOCK.lock();
         *guard = false;
+        let mut guard = PAGE_SCAN_COUNT.lock();
+        *guard = 0;
     }
 
     // 2. scan the inode table to determine which inodes are allocated
     let alloc_inode_list_clone = alloc_inode_list.clone();
     let orphaned_inodes_clone = orphaned_inodes.clone();
-    let persistent_link_counts_clone = persistent_link_counts.clone();
+    let link_counts_clone = link_counts.clone();
     let inode_table = sbi.get_inode_table().unwrap();
     kernel::task::Task::spawn(fmt!("inode_scan"), move || {
         scan_inode_table(
@@ -722,7 +731,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
             recovering,
             alloc_inode_list_clone,
             orphaned_inodes_clone,
-            persistent_link_counts_clone,
+            link_counts_clone,
             &mut num_alloc_inodes,
         );
     })?;
@@ -760,7 +769,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     }
 
     let mut orphaned_inodes = orphaned_inodes.lock();
-    let mut persistent_link_counts = persistent_link_counts.lock();
+    let mut link_counts = link_counts.lock();
 
     if recovering {
         // root is always live so make sure it is not counted as an orphan
@@ -783,16 +792,36 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         if let Some(current_live_inode) = current_live_inode {
             let live_inode = current_live_inode.get_ino();
 
-            if let Some(lc) = real_link_counts.get_mut(&live_inode) {
-                *lc += 1;
+            if let Some(lc) = link_counts.get_mut(&live_inode) {
+                lc.real += 1;
             } else {
                 let live_ino_type = sbi.check_inode_type_by_inode_num(live_inode)?;
                 if live_ino_type == InodeType::DIR {
                     // dirs always point to themselves, so the first dentry we find that
                     // refers to a dir inode is actually its second link
-                    real_link_counts.try_insert(live_inode, 2)?;
+                    let ino_entry = link_counts.get_mut(&live_inode);
+                    match ino_entry {
+                        Some(ino_entry) => ino_entry.real += 2,
+                        None => {
+                            pr_info!(
+                                "inode {:?} is live but has no entry in link count map\n",
+                                live_inode
+                            );
+                            return Err(EINVAL);
+                        }
+                    }
                 } else {
-                    real_link_counts.try_insert(live_inode, 1)?;
+                    let ino_entry = link_counts.get_mut(&live_inode);
+                    match ino_entry {
+                        Some(ino_entry) => ino_entry.real += 1,
+                        None => {
+                            pr_info!(
+                                "inode {:?} is live but has no entry in link count map\n",
+                                live_inode
+                            );
+                            return Err(EINVAL);
+                        }
+                    }
                 }
             }
 
@@ -822,8 +851,8 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
                         if dentry.get_ino() != 0 {
                             // count child directories towards link count
                             if dentry.is_dir() {
-                                if let Some(lc) = real_link_counts.get_mut(&live_inode) {
-                                    *lc += 1;
+                                if let Some(lc) = link_counts.get_mut(&live_inode) {
+                                    lc.real += 1;
                                 }
                             }
                             sbi.ino_dentry_tree.insert(live_inode, dentry)?;
@@ -860,9 +889,9 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
             orphaned_inodes,
             orphaned_pages,
             orphaned_dentries,
-            &mut persistent_link_counts,
+            &mut link_counts,
         )?;
-        fix_link_counts(sbi, persistent_link_counts, real_link_counts)?;
+        fix_link_counts(sbi, link_counts)?;
     }
 
     // TODO: you can do these in parallel with each other
@@ -912,7 +941,7 @@ fn free_orphans(
     orphaned_inodes: Guard<'_, Mutex<RBTree<InodeNum, ()>>>,
     orphaned_pages: Guard<'_, Mutex<RBTree<PageNum, ()>>>,
     orphaned_dentries: Vec<DentryInfo>,
-    persistent_link_counts: &mut RBTree<InodeNum, u16>,
+    link_counts: &mut RBTree<InodeNum, LinkCounts>,
 ) -> Result<()> {
     // for each orphaned object, follow its regular deallocation process
     // TODO: reconcile what you do here with Nathan's recovery typestates
@@ -927,7 +956,7 @@ fn free_orphans(
     // we also remove persistent link counts for orphaned inodes so that we don't
     // consider them during the link count fixup step
     for (iter, _) in orphaned_inodes.iter() {
-        persistent_link_counts.remove(iter);
+        link_counts.remove(iter);
         let pi = unsafe { InodeWrapper::get_recovery_inode(sbi, *iter)? };
         let _pi = pi.recovery_dealloc().flush().fence();
     }
@@ -958,20 +987,15 @@ fn free_orphans(
 
 fn fix_link_counts(
     sbi: &SbInfo,
-    persistent_link_counts: Guard<'_, Mutex<RBTree<InodeNum, u16>>>,
-    real_link_counts: RBTree<InodeNum, u16>,
+    link_counts: Guard<'_, Mutex<RBTree<InodeNum, LinkCounts>>>,
 ) -> Result<()> {
     // TODO: can we do this faster than iterating over all of the inodes?
     // we will again assume that all inodes are regular inodes since it
     // doesn't actually matter what type they are here
-    for (ino, persistent_lc) in persistent_link_counts.iter() {
-        if let Some(real_lc) = real_link_counts.get(ino) {
-            if persistent_lc != real_lc {
-                let pi = unsafe { InodeWrapper::get_too_many_links_inode(sbi, *ino, *real_lc)? };
-                let _pi = pi.recovery_dec_link(*real_lc).flush().fence();
-            }
-        } else {
-            return Err(EINVAL);
+    for (ino, lc) in link_counts.iter() {
+        if lc.persistent != lc.real {
+            let pi = unsafe { InodeWrapper::get_too_many_links_inode(sbi, *ino, lc.real)? };
+            let _pi = pi.recovery_dec_link(lc.real).flush().fence();
         }
     }
     Ok(())
