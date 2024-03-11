@@ -3,7 +3,10 @@
 //! Rust file system sample.
 
 use balloc::*;
-use core::{ffi, ptr, sync::atomic::Ordering};
+use core::{
+    ffi, ptr,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use defs::*;
 use h_dir::*;
 use h_inode::*;
@@ -485,8 +488,10 @@ fn recover_all_renames(sbi: &SbInfo) -> Result<()> {
 kernel::init_static_sync! {
     static INODE_SCAN_LOCK: Mutex<bool> = false;
     static PAGE_SCAN_LOCK: Mutex<bool> = false;
+    static PAGE_SCAN_COUNT: Mutex<u32> = 0;
     static INODE_SCAN_DONE: CondVar;
     static PAGE_SCAN_DONE: CondVar;
+    static PER_CPU_PAGE_SCAN_DONE: CondVar;
     static REMOUNT_LOCK: Mutex<()> = (); // janky fix to prevent multiple mounts using static vars at the same time
 }
 
@@ -532,29 +537,23 @@ fn scan_inode_table(
     INODE_SCAN_DONE.notify_all();
 }
 
-// TODO: actual error handling
-fn scan_page_descriptor_table(
-    page_desc_table: &mut [PageDescriptor],
+fn scan_page_descriptor_table_worker(
+    page_desc_table: &[PageDescriptor],
     recovering: bool,
     alloc_page_list: Arc<Mutex<PageList>>,
     orphaned_pages: Arc<Mutex<RBTree<PageNum, ()>>>,
     init_dir_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>>,
     init_data_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>>,
-    num_alloc_pages: &mut u64,
+    num_alloc_pages: Arc<AtomicU64>,
+    num_cpus: u32,
     data_start_page: u64,
 ) {
-    let mut alloc_page_list = alloc_page_list.lock();
-    let mut orphaned_pages = orphaned_pages.lock();
-    let mut init_dir_pages = init_dir_pages.lock();
-    let mut init_data_pages = init_data_pages.lock();
-    let mut max_page = data_start_page;
-
     for (i, desc) in page_desc_table.iter().enumerate() {
         if !desc.is_free() {
-            // sbi.inc_blocks_in_use();
-            if i > max_page.try_into().unwrap() {
-                max_page = i.try_into().unwrap();
-            }
+            //         // sbi.inc_blocks_in_use();
+            //         if i > max_page.try_into().unwrap() {
+            //             max_page = i.try_into().unwrap();
+            //         }
             let index: u64 = i.try_into().unwrap();
             // add pages to maps that associate inodes with the pages they own
             // we don't add them to the index yet because an initialized page
@@ -562,6 +561,7 @@ fn scan_page_descriptor_table(
             if desc.get_page_type() == PageType::DIR {
                 let dir_desc: &DirPageHeader = desc.try_into().unwrap();
                 if dir_desc.is_initialized() {
+                    let mut init_dir_pages = init_dir_pages.lock();
                     let parent = dir_desc.get_ino();
                     if let Some(node) = init_dir_pages.get_mut(&parent) {
                         node.try_push(index + data_start_page).unwrap();
@@ -574,6 +574,7 @@ fn scan_page_descriptor_table(
             } else if desc.get_page_type() == PageType::DATA {
                 let data_desc: &DataPageHeader = desc.try_into().unwrap();
                 if data_desc.is_initialized() {
+                    let mut init_data_pages = init_data_pages.lock();
                     let parent = data_desc.get_ino();
                     if let Some(node) = init_data_pages.get_mut(&parent) {
                         node.try_push(index + data_start_page).unwrap();
@@ -584,17 +585,70 @@ fn scan_page_descriptor_table(
                     }
                 }
             }
+            let mut alloc_page_list = alloc_page_list.lock();
             alloc_page_list
                 .list
                 .push_back(Box::try_new(LinkedPage::new(index + data_start_page)).unwrap());
             if recovering {
                 // if this page is not orphaned we'll remove it from the set later
+                let mut orphaned_pages = orphaned_pages.lock();
                 orphaned_pages
                     .try_insert(index + data_start_page, ())
                     .unwrap();
             }
-            *num_alloc_pages += 1;
+            // TODO: you can probably relax the ordering?
+            num_alloc_pages.fetch_add(1, Ordering::SeqCst);
         }
+    }
+    let mut guard = PAGE_SCAN_COUNT.lock();
+    *guard += 1;
+    if *guard >= num_cpus {
+        PER_CPU_PAGE_SCAN_DONE.notify_all();
+    }
+}
+
+// TODO: actual error handling
+fn scan_page_descriptor_table(
+    page_desc_table: &'static [PageDescriptor],
+    recovering: bool,
+    alloc_page_list: Arc<Mutex<PageList>>,
+    orphaned_pages: Arc<Mutex<RBTree<PageNum, ()>>>,
+    init_dir_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>>,
+    init_data_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>>,
+    num_alloc_pages: Arc<AtomicU64>,
+    data_start_page: u64,
+    num_cpus: u32,
+) {
+    let num_cpus_usize: usize = num_cpus.try_into().unwrap();
+    let pages_per_cpu = page_desc_table.len() / num_cpus_usize;
+    let mut current_offset = 0;
+    for cpu in 0..num_cpus {
+        let (cpu_page_slice, _) = page_desc_table.split_at(current_offset);
+        current_offset += pages_per_cpu;
+        let alloc_page_list_clone = alloc_page_list.clone();
+        let orphaned_pages_clone = orphaned_pages.clone();
+        let init_dir_pages_clone = init_dir_pages.clone();
+        let init_data_pages_clone = init_data_pages.clone();
+        let num_alloc_pages_clone = num_alloc_pages.clone();
+        kernel::task::Task::spawn(fmt!("pagescan{cpu}"), move || {
+            scan_page_descriptor_table_worker(
+                cpu_page_slice,
+                recovering,
+                alloc_page_list_clone,
+                orphaned_pages_clone,
+                init_dir_pages_clone,
+                init_data_pages_clone,
+                num_alloc_pages_clone,
+                num_cpus,
+                data_start_page,
+            )
+        })
+        .unwrap();
+    }
+
+    let mut guard = PAGE_SCAN_COUNT.lock();
+    while *guard < num_cpus {
+        let _ = PER_CPU_PAGE_SCAN_DONE.wait(&mut guard);
     }
 
     let mut guard = PAGE_SCAN_LOCK.lock();
@@ -604,12 +658,13 @@ fn scan_page_descriptor_table(
 
 fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let data_pages_start = sbi.get_data_pages_start_page();
+    let num_cpus = sbi.cpus;
 
     // let mut alloc_inode_list: List<Box<LinkedInode>> = List::new();
     let alloc_inode_list = Arc::try_new(Mutex::new(InodeList::new()))?;
     let mut num_alloc_inodes = 0;
     let alloc_page_list = Arc::try_new(Mutex::new(PageList::new()))?;
-    let mut num_alloc_pages = 0;
+    let num_alloc_pages = Arc::try_new(AtomicU64::new(0))?;
     let init_dir_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>> =
         Arc::try_new(Mutex::new(RBTree::new()))?;
     let init_data_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>> =
@@ -678,6 +733,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let orphaned_pages_clone = orphaned_pages.clone();
     let init_dir_pages_clone = init_dir_pages.clone();
     let init_data_pages_clone = init_data_pages.clone();
+    let num_alloc_pages_clone = num_alloc_pages.clone();
     let page_desc_table = sbi.get_page_desc_table()?;
     kernel::task::Task::spawn(fmt!("page_scan"), move || {
         scan_page_descriptor_table(
@@ -687,8 +743,9 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
             orphaned_pages_clone,
             init_dir_pages_clone,
             init_data_pages_clone,
-            &mut num_alloc_pages,
+            num_alloc_pages_clone,
             data_pages_start,
+            num_cpus,
         )
     })?;
 
@@ -811,7 +868,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     // TODO: you can do these in parallel with each other
     sbi.page_allocator = Option::<PerCpuPageAllocator>::new_from_alloc_vec(
         alloc_page_list,
-        num_alloc_pages,
+        num_alloc_pages.load(Ordering::SeqCst),
         sbi.get_data_pages_start_page(),
         if sbi.num_pages < sbi.num_blocks {
             sbi.num_pages
