@@ -548,15 +548,18 @@ fn scan_page_descriptor_table_worker(
     recovering: bool,
     alloc_page_list: Arc<Mutex<PageList>>,
     orphaned_pages: Arc<Mutex<RBTree<PageNum, ()>>>,
+    start_offset: u64,
     init_dir_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>>,
     init_data_pages: Arc<Mutex<RBTree<InodeNum, Vec<PageNum>>>>,
     num_alloc_pages: Arc<AtomicU64>,
     num_cpus: u32,
     data_start_page: u64,
+    _cpu: u32,
 ) {
     for (i, desc) in page_desc_table.iter().enumerate() {
         if !desc.is_free() {
             let index: u64 = i.try_into().unwrap();
+            let page_number = index + start_offset + data_start_page;
             // add pages to maps that associate inodes with the pages they own
             // we don't add them to the index yet because an initialized page
             // is not necessarily live (right?)
@@ -566,10 +569,10 @@ fn scan_page_descriptor_table_worker(
                     let mut init_dir_pages = init_dir_pages.lock();
                     let parent = dir_desc.get_ino();
                     if let Some(node) = init_dir_pages.get_mut(&parent) {
-                        node.try_push(index + data_start_page).unwrap();
+                        node.try_push(page_number).unwrap();
                     } else {
                         let mut vec = Vec::new();
-                        vec.try_push(index + data_start_page).unwrap();
+                        vec.try_push(page_number).unwrap();
                         init_dir_pages.try_insert(parent, vec).unwrap();
                     }
                 }
@@ -579,10 +582,10 @@ fn scan_page_descriptor_table_worker(
                     let mut init_data_pages = init_data_pages.lock();
                     let parent = data_desc.get_ino();
                     if let Some(node) = init_data_pages.get_mut(&parent) {
-                        node.try_push(index + data_start_page).unwrap();
+                        node.try_push(page_number).unwrap();
                     } else {
                         let mut vec = Vec::new();
-                        vec.try_push(index + data_start_page).unwrap();
+                        vec.try_push(page_number).unwrap();
                         init_data_pages.try_insert(parent, vec).unwrap();
                     }
                 }
@@ -590,13 +593,11 @@ fn scan_page_descriptor_table_worker(
             let mut alloc_page_list = alloc_page_list.lock();
             alloc_page_list
                 .list
-                .push_back(Box::try_new(LinkedPage::new(index + data_start_page)).unwrap());
+                .push_back(Box::try_new(LinkedPage::new(page_number)).unwrap());
             if recovering {
                 // if this page is not orphaned we'll remove it from the set later
                 let mut orphaned_pages = orphaned_pages.lock();
-                orphaned_pages
-                    .try_insert(index + data_start_page, ())
-                    .unwrap();
+                orphaned_pages.try_insert(page_number, ()).unwrap();
             }
             // TODO: you can probably relax the ordering?
             num_alloc_pages.fetch_add(1, Ordering::SeqCst);
@@ -621,12 +622,14 @@ fn scan_page_descriptor_table(
     data_start_page: u64,
     num_cpus: u32,
 ) {
-    let num_cpus_usize: usize = num_cpus.try_into().unwrap();
-    let pages_per_cpu = page_desc_table.len() / num_cpus_usize;
-    let mut current_offset = 0;
+    let page_desc_table_u64: u64 = page_desc_table.len().try_into().unwrap();
+    let pages_per_cpu: u64 = page_desc_table_u64 / num_cpus as u64;
+    let mut split_table: &[PageDescriptor] = page_desc_table;
+    let mut current_start_offset = 0;
     for cpu in 0..num_cpus {
-        let (cpu_page_slice, _) = page_desc_table.split_at(current_offset);
-        current_offset += pages_per_cpu;
+        let (cpu_page_slice, rest_of_table) =
+            split_table.split_at(pages_per_cpu.try_into().unwrap());
+        split_table = rest_of_table;
         let alloc_page_list_clone = alloc_page_list.clone();
         let orphaned_pages_clone = orphaned_pages.clone();
         let init_dir_pages_clone = init_dir_pages.clone();
@@ -638,14 +641,17 @@ fn scan_page_descriptor_table(
                 recovering,
                 alloc_page_list_clone,
                 orphaned_pages_clone,
+                current_start_offset,
                 init_dir_pages_clone,
                 init_data_pages_clone,
                 num_alloc_pages_clone,
                 num_cpus,
                 data_start_page,
+                cpu,
             )
         })
         .unwrap();
+        current_start_offset += pages_per_cpu;
     }
 
     let mut guard = PAGE_SCAN_COUNT.lock();
@@ -658,7 +664,6 @@ fn scan_page_descriptor_table(
     PAGE_SCAN_DONE.notify_all();
 }
 
-// (real, persistent)
 struct LinkCounts {
     real: u16,
     persistent: u16,
@@ -668,7 +673,6 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let data_pages_start = sbi.get_data_pages_start_page();
     let num_cpus = sbi.cpus;
 
-    // let mut alloc_inode_list: List<Box<LinkedInode>> = List::new();
     let alloc_inode_list = Arc::try_new(Mutex::new(InodeList::new()))?;
     let mut num_alloc_inodes = 0;
     let alloc_page_list = Arc::try_new(Mutex::new(PageList::new()))?;
@@ -686,6 +690,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
     let mut orphaned_dentries: Vec<DentryInfo> = Vec::new(); // this is unlikely to get large enough to cause problems
 
     // this is used to determine if we have link count leaks
+    // TODO: only construct this if we are recovering (use an option if not)
     let link_counts: Arc<Mutex<RBTree<InodeNum, LinkCounts>>> =
         Arc::try_new(Mutex::new(RBTree::new()))?;
 
@@ -776,7 +781,6 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         orphaned_inodes.remove(&1);
     }
 
-    let alloc_page_list = alloc_page_list.lock();
     let mut orphaned_pages = orphaned_pages.lock();
     let init_dir_pages = init_dir_pages.lock();
     let init_data_pages = init_data_pages.lock();
@@ -792,34 +796,37 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         if let Some(current_live_inode) = current_live_inode {
             let live_inode = current_live_inode.get_ino();
 
-            if let Some(lc) = link_counts.get_mut(&live_inode) {
-                lc.real += 1;
-            } else {
-                let live_ino_type = sbi.check_inode_type_by_inode_num(live_inode)?;
-                if live_ino_type == InodeType::DIR {
-                    // dirs always point to themselves, so the first dentry we find that
-                    // refers to a dir inode is actually its second link
-                    let ino_entry = link_counts.get_mut(&live_inode);
-                    match ino_entry {
-                        Some(ino_entry) => ino_entry.real += 2,
-                        None => {
-                            pr_info!(
-                                "inode {:?} is live but has no entry in link count map\n",
-                                live_inode
-                            );
-                            return Err(EINVAL);
-                        }
-                    }
+            // only have to track link counts if we are recovering
+            if recovering {
+                if let Some(lc) = link_counts.get_mut(&live_inode) {
+                    lc.real += 1;
                 } else {
-                    let ino_entry = link_counts.get_mut(&live_inode);
-                    match ino_entry {
-                        Some(ino_entry) => ino_entry.real += 1,
-                        None => {
-                            pr_info!(
-                                "inode {:?} is live but has no entry in link count map\n",
-                                live_inode
-                            );
-                            return Err(EINVAL);
+                    let live_ino_type = sbi.check_inode_type_by_inode_num(live_inode)?;
+                    if live_ino_type == InodeType::DIR {
+                        // dirs always point to themselves, so the first dentry we find that
+                        // refers to a dir inode is actually its second link
+                        let ino_entry = link_counts.get_mut(&live_inode);
+                        match ino_entry {
+                            Some(ino_entry) => ino_entry.real += 2,
+                            None => {
+                                pr_info!(
+                                    "inode {:?} is live but has no entry in link count map\n",
+                                    live_inode
+                                );
+                                return Err(EINVAL);
+                            }
+                        }
+                    } else {
+                        let ino_entry = link_counts.get_mut(&live_inode);
+                        match ino_entry {
+                            Some(ino_entry) => ino_entry.real += 1,
+                            None => {
+                                pr_info!(
+                                    "inode {:?} is live but has no entry in link count map\n",
+                                    live_inode
+                                );
+                                return Err(EINVAL);
+                            }
                         }
                     }
                 }
@@ -850,7 +857,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
                         // unallocated pages because we'll zero them out before we reuse the page
                         if dentry.get_ino() != 0 {
                             // count child directories towards link count
-                            if dentry.is_dir() {
+                            if recovering && dentry.is_dir() {
                                 if let Some(lc) = link_counts.get_mut(&live_inode) {
                                     lc.real += 1;
                                 }
@@ -894,7 +901,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         fix_link_counts(sbi, link_counts)?;
     }
 
-    // TODO: you can do these in parallel with each other
+    // TODO: you can do these in parallel with each other (or at least parallize the pages?)
     sbi.page_allocator = Option::<PerCpuPageAllocator>::new_from_alloc_vec(
         alloc_page_list,
         num_alloc_pages.load(Ordering::SeqCst),

@@ -19,7 +19,7 @@ use kernel::{
     linked_list::{Cursor, List},
     linked_list::{GetLinks, Links},
     rbtree::RBTree,
-    sync::{smutex::Mutex, Arc, CondVar, Guard},
+    sync::{smutex::Mutex, Arc, CondVar},
 };
 
 pub(crate) trait PageAllocator {
@@ -27,7 +27,7 @@ pub(crate) trait PageAllocator {
     where
         Self: Sized;
     fn new_from_alloc_vec(
-        alloc_pages: Guard<'_, Mutex<PageList>>,
+        alloc_pages: Arc<Mutex<PageList>>,
         num_alloc_pages: u64,
         start: u64,
         dev_pages: u64,
@@ -145,76 +145,75 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
     /// alloc_pages must be in sorted order. only pages between start and dev_pages
     /// will be added to the allocator
     fn new_from_alloc_vec(
-        alloc_pages: Guard<'_, Mutex<PageList>>,
+        alloc_pages: Arc<Mutex<PageList>>,
         num_alloc_pages: u64,
         start: u64,
         dev_pages: u64,
         cpus: u32,
     ) -> Result<Self> {
+        let alloc_pages = alloc_pages.lock();
         let total_pages = dev_pages - start;
         let cpus_u64: u64 = cpus.into();
         let pages_per_cpu = total_pages / cpus_u64;
         let mut free_lists = Vec::new();
         let mut page_cursor = alloc_pages.list.cursor_front();
         let mut current_alloc_page = page_cursor.current();
-        let mut current_page = start;
-        let mut current_cpu_start = start; // used to keep track of when to move to the next cpu pool
-                                           // let mut i = 0;
-        let mut rb_tree = RBTree::new();
+        let mut max_page = 0;
+
+        // this might be slightly smaller than the total number of pages on the device
+        let maximum_usable_pages = pages_per_cpu * cpus_u64;
+
         if num_alloc_pages > 0 {
+            for _ in 0..cpus {
+                free_lists.try_push(Arc::try_new(Mutex::new(PageFreeList {
+                    free_pages: pages_per_cpu,
+                    list: RBTree::new(),
+                }))?)?;
+            }
             while current_alloc_page.is_some() {
                 if let Some(current_alloc_page) = current_alloc_page {
                     let current_alloc_page_no = current_alloc_page.get_page_no();
-                    if current_page == current_cpu_start + pages_per_cpu {
-                        let free_list = PageFreeList {
-                            free_pages: pages_per_cpu,
-                            list: rb_tree,
-                        };
-                        free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
-                        rb_tree = RBTree::new();
-                        current_cpu_start += pages_per_cpu;
+                    if current_alloc_page_no > max_page {
+                        max_page = current_alloc_page_no;
                     }
-                    if current_page < current_alloc_page_no {
-                        rb_tree.try_insert(current_page, ())?;
-                        current_page += 1;
-                    } else if current_page == current_alloc_page_no {
-                        current_page += 1;
-                        page_cursor.move_next();
-                    } else {
-                        pr_info!(
-                            "ERROR: current page is {:?} but current alloc page is {:?}\n",
-                            current_page,
-                            current_alloc_page_no
-                        );
-                        return Err(EINVAL);
+                    let current_page_cpu: usize =
+                        ((current_alloc_page_no - start) / pages_per_cpu).try_into()?;
+                    let rb_tree: Option<Arc<Mutex<PageFreeList>>> =
+                        free_lists.get(current_page_cpu).cloned();
+                    match rb_tree {
+                        Some(free_list) => {
+                            let mut free_list = free_list.lock();
+                            free_list.list.try_insert(current_alloc_page_no, ())?;
+                            free_list.free_pages -= 1;
+                        }
+                        None => {
+                            pr_info!("CPU {:?} does not have a free list\n", current_page_cpu);
+                            return Err(EINVAL);
+                        }
                     }
+                    page_cursor.move_next();
                 }
                 current_alloc_page = page_cursor.current();
             }
         }
-        if current_page < dev_pages {
-            for current in current_page..dev_pages {
-                if current == (current_cpu_start + pages_per_cpu).try_into()? {
-                    let free_list = PageFreeList {
-                        free_pages: pages_per_cpu,
-                        list: rb_tree,
-                    };
-                    free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
-                    rb_tree = RBTree::new();
-                    current_cpu_start += pages_per_cpu;
+        if max_page < maximum_usable_pages {
+            for page in max_page..maximum_usable_pages {
+                let current_page_cpu: usize = ((page - start) / pages_per_cpu).try_into()?;
+                let rb_tree: Option<Arc<Mutex<PageFreeList>>> =
+                    free_lists.get(current_page_cpu).cloned();
+                match rb_tree {
+                    Some(free_list) => {
+                        let mut free_list = free_list.lock();
+                        free_list.list.try_insert(page, ())?;
+                        free_list.free_pages -= 1;
+                    }
+                    None => {
+                        pr_info!("CPU {:?} does not have a free list\n", current_page_cpu);
+                        return Err(EINVAL);
+                    }
                 }
-                rb_tree.try_insert(current.try_into()?, ())?;
             }
         }
-        // if there is only one cpu, we may not have inserted the free list earlier
-        if cpus == 1 && free_lists.len() == 0 {
-            let free_list = PageFreeList {
-                free_pages: pages_per_cpu,
-                list: rb_tree,
-            };
-            free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
-        }
-
         Ok(Some(PerCpuPageAllocator {
             free_lists,
             pages_per_cpu,
@@ -271,7 +270,6 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                 let free_list = Arc::clone(&allocator.free_lists[cpuid]);
                 let mut free_list = free_list.lock();
                 if free_list.free_pages == 0 {
-                    pr_info!("ERROR: no more pages\n");
                     Err(ENOSPC)
                 } else {
                     // TODO: is using an iterator the fastest way to do this?
