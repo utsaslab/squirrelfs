@@ -37,6 +37,9 @@ pub(crate) const INODE_SIZE: u64 = 96;
 pub(crate) const PAGE_DESCRIPTOR_SIZE: u64 = 32; // TODO: can we reduce this?
 pub(crate) const SB_SIZE: u64 = HAYLEYFS_PAGESIZE;
 
+pub(crate) const INODE_INDEX_SIZE: u64 = 16;
+pub(crate) const PAGE_NODE_SIZE: u64 = 16;
+
 #[repr(C)]
 #[allow(dead_code)]
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -178,6 +181,8 @@ pub(crate) struct SbInfo {
     pub(crate) num_pages: u64,
     pub(crate) page_desc_table_size: u64,
     pub(crate) page_desc_table_pages: u64,
+    pub(crate) index_region_size: u64,
+    pub(crate) index_region_pages: u64,
 }
 
 // SbInfo must be Send and Sync for it to be used as the Context's data.
@@ -219,6 +224,8 @@ impl SbInfo {
             num_pages: 0,
             page_desc_table_size: 0,
             page_desc_table_pages: 0,
+            index_region_size: 0,
+            index_region_pages: 0,
         }
     }
 
@@ -230,8 +237,12 @@ impl SbInfo {
         self.get_inode_table_start_page() + self.inode_table_pages
     }
 
-    pub(crate) fn get_data_pages_start_page(&self) -> PageNum {
+    pub(crate) fn get_index_region_start_page(&self) -> PageNum {
         self.get_page_desc_table_start_page() + self.page_desc_table_pages
+    }
+
+    pub(crate) fn get_data_pages_start_page(&self) -> PageNum {
+        self.get_index_region_start_page() + self.index_region_pages
     }
 
     // TODO: do these really need to be SeqCst?

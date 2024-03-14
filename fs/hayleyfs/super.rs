@@ -20,6 +20,7 @@ mod h_dir;
 mod h_file;
 mod h_inode;
 mod h_symlink;
+mod index;
 mod ioctl;
 mod namei;
 mod pm;
@@ -823,8 +824,12 @@ impl PmDevice for SbInfo {
         self.num_blocks = num_blocks.try_into()?;
 
         let device_size: u64 = self.size.try_into()?;
-        let pages_per_inode = 8;
-        let bytes_per_inode = pages_per_inode * HAYLEYFS_PAGESIZE;
+        let pages_per_inode = 4;
+        // include space for storing the file's index information so
+        // that we leave the correct amount of space free for saving indexes
+        let bytes_per_inode = (pages_per_inode * HAYLEYFS_PAGESIZE)
+            + INODE_INDEX_SIZE
+            + (PAGE_NODE_SIZE * pages_per_inode);
         pr_info!("device size: {:?}\n", device_size);
         let num_inodes: u64 = device_size / bytes_per_inode;
         let inode_table_size = num_inodes * INODE_SIZE;
@@ -832,6 +837,9 @@ impl PmDevice for SbInfo {
         let num_pages = num_inodes * pages_per_inode;
         let page_desc_table_size = num_pages * PAGE_DESCRIPTOR_SIZE;
         let page_desc_table_pages = (page_desc_table_size / HAYLEYFS_PAGESIZE) + 1;
+        let index_region_size =
+            num_inodes * (INODE_INDEX_SIZE + (PAGE_NODE_SIZE * pages_per_inode));
+        let index_region_pages = (index_region_size / HAYLEYFS_PAGESIZE) + 1;
         pr_info!(
             "size of inode table (MB): {:?}\n",
             inode_table_size / (1024 * 1024)
@@ -839,6 +847,10 @@ impl PmDevice for SbInfo {
         pr_info!(
             "size of page descriptor table (MB): {:?}\n",
             page_desc_table_size / (1024 * 1024)
+        );
+        pr_info!(
+            "size of index region (MB): {:?}\n",
+            index_region_size / (1024 * 1024)
         );
         pr_info!("number of inodes: {:?}\n", num_inodes);
         pr_info!("number of pages: {:?}\n", num_pages);
@@ -849,9 +861,11 @@ impl PmDevice for SbInfo {
         self.num_pages = num_pages;
         self.page_desc_table_size = page_desc_table_size;
         self.page_desc_table_pages = page_desc_table_pages;
+        self.index_region_size = index_region_size;
+        self.index_region_pages = index_region_pages;
 
         self.blocks_in_use.store(
-            inode_table_pages + page_desc_table_pages + 1,
+            inode_table_pages + page_desc_table_pages + index_region_pages + 1,
             Ordering::SeqCst,
         );
 
