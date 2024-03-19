@@ -37,7 +37,7 @@ pub(crate) const INODE_SIZE: u64 = 96;
 pub(crate) const PAGE_DESCRIPTOR_SIZE: u64 = 32; // TODO: can we reduce this?
 pub(crate) const SB_SIZE: u64 = HAYLEYFS_PAGESIZE;
 
-pub(crate) const INODE_INDEX_SIZE: u64 = 16;
+pub(crate) const INODE_INDEX_SIZE: u64 = 18;
 pub(crate) const PAGE_NODE_SIZE: u64 = 16;
 
 #[repr(C)]
