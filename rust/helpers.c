@@ -69,7 +69,8 @@ unsigned long rust_helper_copy_from_user(void *to, const void __user *from,
 EXPORT_SYMBOL_GPL(rust_helper_copy_from_user);
 
 #ifdef CONFIG_HAYLEY_FS_DEBUG
-noinline void rust_helper_memcpy_hook(void *dst, unsigned n) {
+noinline void rust_helper_memcpy_hook(void *dst, unsigned n)
+{
 	// this function is optimized out if it doesn't actually do anything
 	// TODO: faster/smaller op that will still keep the function in
 	printk(KERN_ALERT "hook %p %lu\n", dst, n);
@@ -867,52 +868,71 @@ bool rust_helper_dir_emit(struct dir_context *ctx, const char *name,
 }
 EXPORT_SYMBOL_GPL(rust_helper_dir_emit);
 
-void rust_helper_file_accessed(struct file *file) {
+void rust_helper_file_accessed(struct file *file)
+{
 	file_accessed(file);
 }
 EXPORT_SYMBOL_GPL(rust_helper_file_accessed);
 
-unsigned long rust_helper_thp_get_unmapped_area(
-	struct file *filp, 
-	unsigned long addr,
-	unsigned long len, 
-	unsigned long pgoff, 
-	unsigned long flags
-) 
+unsigned long rust_helper_thp_get_unmapped_area(struct file *filp,
+						unsigned long addr,
+						unsigned long len,
+						unsigned long pgoff,
+						unsigned long flags)
 {
 	return thp_get_unmapped_area(filp, addr, len, pgoff, flags);
 }
 EXPORT_SYMBOL_GPL(rust_helper_thp_get_unmapped_area);
 
-void rust_helper_vm_flags_set(struct vm_area_struct *vma, vm_flags_t flags) {
+void rust_helper_vm_flags_set(struct vm_area_struct *vma, vm_flags_t flags)
+{
 	vm_flags_set(vma, flags);
 }
 EXPORT_SYMBOL_GPL(rust_helper_vm_flags_set);
 
-int rust_helper_mapping_mapped(struct address_space *mapping) {
+int rust_helper_mapping_mapped(struct address_space *mapping)
+{
 	return mapping_mapped(mapping);
 }
 EXPORT_SYMBOL_GPL(rust_helper_mapping_mapped);
 
-noinline void rust_helper_sfence(void) {
-	asm volatile ("sfence\n" : : );
+noinline void rust_helper_sfence(void)
+{
+	asm volatile("sfence\n" : :);
 }
 EXPORT_SYMBOL_GPL(rust_helper_sfence);
 
-#define _mm_clwb(addr)\
-	asm volatile(".byte 0x66; xsaveopt %0" : "+m" \
-		     (*(volatile char *)(addr)))
+#define _mm_clflush(addr) \
+	asm volatile("clflush %0" : "+m"(*(volatile char *)(addr)))
+
+#define _mm_clflushopt(addr) \
+	asm volatile(".byte 0x66; clflush %0" : "+m"(*(volatile char *)(addr)))
+
+#define _mm_clwb(addr) \
+	asm volatile(".byte 0x66; xsaveopt %0" : "+m"(*(volatile char *)(addr)))
+
+static inline bool arch_has_clwb(void)
+{
+	bool ret = static_cpu_has(X86_FEATURE_CLWB);
+	return ret;
+}
 
 // TODO: extremely janky. copied from NOVA. ideally this stuff would be implemented in the file system
 // not here but this is the easiest way for chipmunk to handle it
-noinline void rust_helper_flush_buffer(const void *buf, unsigned int len, bool fence)
+noinline void rust_helper_flush_buffer(const void *buf, unsigned int len,
+				       bool fence)
 {
 	unsigned int i;
 	unsigned int CACHELINE_SIZE = 64;
 
 	len = len + ((unsigned long)(buf) & (CACHELINE_SIZE - 1));
-	for (i = 0; i < len; i += CACHELINE_SIZE)
-		_mm_clwb(buf + i);
+	if (arch_has_clwb()) {
+		for (i = 0; i < len; i += CACHELINE_SIZE)
+			_mm_clwb(buf + i);
+	} else {
+		for (i = 0; i < len; i += CACHELINE_SIZE)
+			_mm_clflush(buf + i);
+	}
 	/* Do a fence only if asked. We often don't need to do a fence
 	 * immediately after clflush because even if we get context switched
 	 * between clflush and subsequent fence, the context switch operation
@@ -920,47 +940,47 @@ noinline void rust_helper_flush_buffer(const void *buf, unsigned int len, bool f
 	 */
 	if (fence)
 		rust_helper_sfence();
-		// PERSISTENT_BARRIER();
 }
 EXPORT_SYMBOL_GPL(rust_helper_flush_buffer);
 
 /* assumes the length to be 4-byte aligned */
-noinline void rust_helper_memset_nt(void *dest, unsigned int dword, size_t length)
+noinline void rust_helper_memset_nt(void *dest, unsigned int dword,
+				    size_t length)
 {
 	unsigned long dummy1, dummy2;
 	unsigned long qword = ((unsigned long)dword << 32) | dword;
 
-	asm volatile ("movl %%edx,%%ecx\n"
-		"andl $63,%%edx\n"
-		"shrl $6,%%ecx\n"
-		"jz 9f\n"
-		"1:	 movnti %%rax,(%%rdi)\n"
-		"2:	 movnti %%rax,1*8(%%rdi)\n"
-		"3:	 movnti %%rax,2*8(%%rdi)\n"
-		"4:	 movnti %%rax,3*8(%%rdi)\n"
-		"5:	 movnti %%rax,4*8(%%rdi)\n"
-		"8:	 movnti %%rax,5*8(%%rdi)\n"
-		"7:	 movnti %%rax,6*8(%%rdi)\n"
-		"8:	 movnti %%rax,7*8(%%rdi)\n"
-		"leaq 64(%%rdi),%%rdi\n"
-		"decl %%ecx\n"
-		"jnz 1b\n"
-		"9:	movl %%edx,%%ecx\n"
-		"andl $7,%%edx\n"
-		"shrl $3,%%ecx\n"
-		"jz 11f\n"
-		"10:	 movnti %%rax,(%%rdi)\n"
-		"leaq 8(%%rdi),%%rdi\n"
-		"decl %%ecx\n"
-		"jnz 10b\n"
-		"11:	 movl %%edx,%%ecx\n"
-		"shrl $2,%%ecx\n"
-		"jz 12f\n"
-		"movnti %%eax,(%%rdi)\n"
-		"12:\n"
-		: "=D"(dummy1), "=d" (dummy2)
-		: "D" (dest), "a" (qword), "d" (length)
-		: "memory", "rcx");
+	asm volatile("movl %%edx,%%ecx\n"
+		     "andl $63,%%edx\n"
+		     "shrl $6,%%ecx\n"
+		     "jz 9f\n"
+		     "1:	 movnti %%rax,(%%rdi)\n"
+		     "2:	 movnti %%rax,1*8(%%rdi)\n"
+		     "3:	 movnti %%rax,2*8(%%rdi)\n"
+		     "4:	 movnti %%rax,3*8(%%rdi)\n"
+		     "5:	 movnti %%rax,4*8(%%rdi)\n"
+		     "8:	 movnti %%rax,5*8(%%rdi)\n"
+		     "7:	 movnti %%rax,6*8(%%rdi)\n"
+		     "8:	 movnti %%rax,7*8(%%rdi)\n"
+		     "leaq 64(%%rdi),%%rdi\n"
+		     "decl %%ecx\n"
+		     "jnz 1b\n"
+		     "9:	movl %%edx,%%ecx\n"
+		     "andl $7,%%edx\n"
+		     "shrl $3,%%ecx\n"
+		     "jz 11f\n"
+		     "10:	 movnti %%rax,(%%rdi)\n"
+		     "leaq 8(%%rdi),%%rdi\n"
+		     "decl %%ecx\n"
+		     "jnz 10b\n"
+		     "11:	 movl %%edx,%%ecx\n"
+		     "shrl $2,%%ecx\n"
+		     "jz 12f\n"
+		     "movnti %%eax,(%%rdi)\n"
+		     "12:\n"
+		     : "=D"(dummy1), "=d"(dummy2)
+		     : "D"(dest), "a"(qword), "d"(length)
+		     : "memory", "rcx");
 }
 EXPORT_SYMBOL_GPL(rust_helper_memset_nt);
 
