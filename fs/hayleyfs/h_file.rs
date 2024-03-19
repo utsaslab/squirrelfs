@@ -127,6 +127,16 @@ impl file::Operations for FileOps {
         }
     }
 
+    fn fallocate(
+        _data: (),
+        _file: &file::File,
+        _mode: i32,
+        _offset: i64,
+        _len: i64,
+    ) -> Result<u64> {
+        Err(EINVAL)
+    }
+
     fn ioctl(data: (), file: &file::File, cmd: &mut file::IoctlCommand) -> Result<i32> {
         cmd.dispatch::<Self>(data, file)
     }

@@ -471,6 +471,24 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         }
     }
 
+    unsafe extern "C" fn fallocate_callback(
+        file: *mut bindings::file,
+        mode: core::ffi::c_int,
+        offset: core::ffi::c_long,
+        len: core::ffi::c_long,
+    ) -> core::ffi::c_long {
+        from_kernel_result! {
+            // SAFETY: `private_data` was initialised by `open_callback` with a value returned by
+            // `T::Data::into_foreign`. `T::Data::from_foreign` is only called by the
+            // `release` callback, which the C API guarantees that will be called only when all
+            // references to `file` have been released, so we know it can't be called while this
+            // function is running.
+            let f = unsafe { T::Data::borrow((*file).private_data) };
+            let ret = T::fallocate(f, unsafe { File::from_ptr(file) }, mode, offset, len)?;
+            Ok(ret as bindings::loff_t)
+        }
+    }
+
     unsafe extern "C" fn unlocked_ioctl_callback(
         file: *mut bindings::file,
         cmd: core::ffi::c_uint,
@@ -605,7 +623,7 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
             None
         },
         copy_file_range: None,
-        fallocate: None,
+        fallocate: Some(Self::fallocate_callback),
         fadvise: None,
         fasync: None,
         flock: None,
@@ -843,6 +861,19 @@ pub trait Operations {
         _data: <Self::Data as ForeignOwnable>::Borrowed<'_>,
         _file: &File,
         _offset: SeekFrom,
+    ) -> Result<u64> {
+        Err(EINVAL)
+    }
+
+    /// Allocate space for the file.
+    ///
+    /// Corresponds to the `fallocate` function pointer in `struct file_operations`.
+    fn fallocate(
+        _data: <Self::Data as ForeignOwnable>::Borrowed<'_>,
+        _file: &File,
+        _mode: i32,
+        _offset: i64,
+        _len: i64,
     ) -> Result<u64> {
         Err(EINVAL)
     }
