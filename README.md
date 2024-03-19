@@ -40,7 +40,8 @@ All steps in this section should be run on the host, regardless of whether you a
 4. Follow the instructions to install Ubuntu on the VM.  Defaults for the minimal installation are fine.
 5. Quit the VM and boot it again using `qemu-system-x86_64 -boot c -m 8G -hda <image name> -enable-kvm`.
 6. Open a terminal in the graphical VM and run `sudo apt-get git openssh-server`
-7. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda <image name> -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <cores>` and accessed via ssh over port 2222.
+7. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda <image name> -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <cores>` and accessed via ssh over port 2222. 
+    - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message. Open another terminal window and SSH in; it may take a few seconds before you can connect to the VM. 
 
 ### Option 2 (pre-existing image)
 
@@ -48,6 +49,7 @@ All steps in this section should be run on the host, regardless of whether you a
 2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 25GB)
 3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp 8`
 4. SSH into the VM using `ssh rustfs@localhost -p 2222`. The username and password are both `rustfs`.
+    - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message. Open another terminal window and SSH in; it may take a few seconds before you can connect to the VM. 
 5. The VM has the SquirrelFS kernel installed; however, please clone and install the most up-to-date version from GitHub, as the image is not regularly updated.
 
 ## Baremetal setup
