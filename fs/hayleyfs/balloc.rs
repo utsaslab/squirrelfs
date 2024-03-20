@@ -295,18 +295,16 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
     fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
             let page_list = pages.get_page_list_cursor();
-            // let mut page_list = pages.get_page_list_cursor();
-            // let mut page = page_list.current();
-            // while page.is_some() {
-            //     if let Some(page) = page {
-            //         // TODO: refactor to avoid acquiring lock on every iteration
-            //         allocator.dealloc_page(page.get_page_no())?;
-            //         page_list.move_next();
-            //     }
-            //     page = page_list.current();
-            // }
-            // Ok(())
-            allocator.dealloc_multiple_page(page_list)?; 
+            let mut page_list = pages.get_page_list_cursor();
+            let mut page = page_list.current();
+            while page.is_some() {
+                if let Some(page) = page {
+                    // TODO: refactor to avoid acquiring lock on every iteration
+                    allocator.dealloc_page(page.get_page_no())?;
+                    page_list.move_next();
+                }
+                page = page_list.current();
+            }
             Ok(())
         } else {
             pr_info!("ERROR: page allocator is uninitialized\n");
@@ -356,10 +354,14 @@ impl PerCpuPageAllocator {
 
 
         let mut page = page_list.current(); // head of page list
+        
+        let mut num_pages = 0; 
 
         // get a list of pages #s for each cpu
         while page.is_some() {
             if let Some(page) = page {
+                pr_info!("Page: {}", page.get_page_no());
+
                 let cpu : usize = ((page.get_page_no() - self.start) / self.pages_per_cpu).try_into()?;
 
                 if matches!(cpu_free_list_map.get(&cpu), None) {
@@ -373,17 +375,21 @@ impl PerCpuPageAllocator {
 
                 page_list.move_next();
             }
-            page = page_list.current()
+            page = page_list.current(); 
+            num_pages += 1; 
         }
 
+        pr_info!("Num Pages in List: {}", num_pages); 
 
         // add pages to corresponding free list in ascending cpu # order
         for (cpu, page_nos) in cpu_free_list_map.iter() {
 
             let free_list = Arc::clone(&self.free_lists[*cpu]);
             let mut free_list = free_list.lock();
+            let old_free_pages = free_list.free_pages; 
 
             for page_no in page_nos.iter() {
+
                 free_list.free_pages += 1;
                 let res = free_list.list.try_insert(*page_no, ());
 
@@ -410,8 +416,11 @@ impl PerCpuPageAllocator {
                     );
                     return Err(EINVAL); 
                 }
+                pr_info!("Cpu: {} Freed: {}", cpu, page_no);
+                pr_info!("Pages Added: {}", free_list.free_pages - old_free_pages); 
             }
         }
+
         return Ok(()); 
     }
 }
