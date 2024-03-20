@@ -864,15 +864,19 @@ impl PmDevice for SbInfo {
         self.num_blocks = num_blocks.try_into()?;
 
         let device_size: u64 = self.size.try_into()?;
-        let pages_per_inode = 8;
-        let bytes_per_inode = pages_per_inode * HAYLEYFS_PAGESIZE;
+        let data_pages_per_inode = 4;
+        let bytes_per_inode = (data_pages_per_inode * HAYLEYFS_PAGESIZE)
+            + (data_pages_per_inode * PAGE_DESCRIPTOR_SIZE)
+            + INDEX_NODE_SIZE;
         pr_info!("device size: {:?}\n", device_size);
         let num_inodes: u64 = device_size / bytes_per_inode;
         let inode_table_size = num_inodes * INODE_SIZE;
         let inode_table_pages = (inode_table_size / HAYLEYFS_PAGESIZE) + 1; // account for possible rounding down
-        let num_pages = num_inodes * pages_per_inode;
+        let num_pages = num_inodes * data_pages_per_inode;
         let page_desc_table_size = num_pages * PAGE_DESCRIPTOR_SIZE;
         let page_desc_table_pages = (page_desc_table_size / HAYLEYFS_PAGESIZE) + 1;
+        let durable_index_size = num_inodes * INDEX_NODE_SIZE;
+        let durable_index_pages = (durable_index_size / HAYLEYFS_PAGESIZE) + 1;
         pr_info!(
             "size of inode table (MB): {:?}\n",
             inode_table_size / (1024 * 1024)
@@ -880,6 +884,10 @@ impl PmDevice for SbInfo {
         pr_info!(
             "size of page descriptor table (MB): {:?}\n",
             page_desc_table_size / (1024 * 1024)
+        );
+        pr_info!(
+            "size of durable index region (MB): {:?}\n",
+            durable_index_size / (1024 * 1024)
         );
         pr_info!("number of inodes: {:?}\n", num_inodes);
         pr_info!("number of pages: {:?}\n", num_pages);
@@ -890,6 +898,8 @@ impl PmDevice for SbInfo {
         self.num_pages = num_pages;
         self.page_desc_table_size = page_desc_table_size;
         self.page_desc_table_pages = page_desc_table_pages;
+        self.durable_index_size = durable_index_size;
+        self.durable_index_pages = durable_index_pages;
 
         self.blocks_in_use.store(
             inode_table_pages + page_desc_table_pages + 1,
