@@ -166,7 +166,10 @@ fn hayleyfs_write<'a>(
     init_timing!(write_inode_lookup);
     start_timing!(write_inode_lookup);
     let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
-
+    let pi = match pi.check_and_open() {
+        Ok(pi) => pi.flush().fence(),
+        Err(pi) => pi,
+    };
     let pi_info = pi.get_inode_info()?;
     end_timing!(WriteInodeLookup, write_inode_lookup);
 
@@ -220,7 +223,7 @@ fn hayleyfs_write<'a>(
 
 fn single_page_write<'a>(
     sbi: &'a SbInfo,
-    pi: &InodeWrapper<'a, Clean, Start, RegInode>,
+    pi: &InodeWrapper<'a, Clean, Open, RegInode>,
     pi_info: &HayleyFsRegInodeInfo,
     reader: &mut impl IoBufferReader,
     count: u64,
@@ -279,7 +282,7 @@ fn single_page_write<'a>(
 
 fn runtime_checked_write<'a>(
     sbi: &'a SbInfo,
-    pi: &InodeWrapper<'a, Clean, Start, RegInode>,
+    pi: &InodeWrapper<'a, Clean, Open, RegInode>,
     pi_info: &HayleyFsRegInodeInfo,
     reader: &mut impl IoBufferReader,
     mut len: u64,
@@ -352,7 +355,7 @@ fn runtime_checked_write<'a>(
 #[allow(dead_code)]
 fn iterator_write<'a>(
     sbi: &'a SbInfo,
-    pi: &InodeWrapper<'a, Clean, Start, RegInode>,
+    pi: &InodeWrapper<'a, Clean, Open, RegInode>,
     pi_info: &HayleyFsRegInodeInfo,
     reader: &mut impl IoBufferReader,
     count: u64,

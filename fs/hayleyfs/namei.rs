@@ -273,6 +273,10 @@ impl inode::Operations for InodeOps {
             // get a mutable reference to one of the dram indexes
             let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
             let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
+            let pi = match pi.check_and_open() {
+                Ok(pi) => pi.flush().fence(),
+                Err(pi) => pi,
+            };
             hayleyfs_truncate(sbi, pi, unsafe { (*iattr).ia_size })
         } else {
             // TODO: should be enotsupp?
@@ -333,7 +337,7 @@ pub(crate) fn hayleyfs_iget(
 
     let inode_type = pi.get_type();
     match inode_type {
-        InodeType::REG => unsafe {
+        INODE_TYPE_REG => unsafe {
             init_timing!(init_reg_inode);
             start_timing!(init_reg_inode);
             (*inode).i_op = inode::OperationsVtable::<InodeOps>::build();
@@ -355,7 +359,7 @@ pub(crate) fn hayleyfs_iget(
             }
             end_timing!(InitRegInode, init_reg_inode);
         },
-        InodeType::DIR => unsafe {
+        INODE_TYPE_DIR => unsafe {
             init_timing!(init_dir_inode);
             start_timing!(init_dir_inode);
             (*inode).i_op = inode::OperationsVtable::<InodeOps>::build();
@@ -383,7 +387,7 @@ pub(crate) fn hayleyfs_iget(
             }
             end_timing!(InitDirInode, init_dir_inode);
         },
-        InodeType::SYMLINK => unsafe {
+        INODE_TYPE_SYMLINK => unsafe {
             (*inode).i_op = symlink::OperationsVtable::<SymlinkOps>::build();
             let pages = sbi.ino_data_page_tree.remove(ino);
             // if the inode has any pages associated with it, remove them from the
@@ -400,9 +404,13 @@ pub(crate) fn hayleyfs_iget(
                 (*inode).i_private = inode_info.into_foreign() as *mut _;
             }
         },
-        InodeType::NONE => {
+        INODE_TYPE_NONE => {
             pr_info!("Inode {:?} has type NONE\n", ino);
             panic!("Inode type is NONE")
+        }
+        _ => {
+            pr_info!("Inode {:?} has invalid type {:?}\n", ino, inode_type);
+            return Err(EINVAL);
         }
     }
     unsafe { bindings::unlock_new_inode(inode) };
@@ -440,7 +448,7 @@ fn new_vfs_inode<'a, Type>(
     // so we can rely on these being correct
     let inode_type = new_inode.get_type();
     match inode_type {
-        InodeType::REG => {
+        INODE_TYPE_REG => {
             init_timing!(init_reg_vfs_inode);
             start_timing!(init_reg_vfs_inode);
             vfs_inode.i_mode = umode;
@@ -455,7 +463,7 @@ fn new_vfs_inode<'a, Type>(
             }
             end_timing!(InitRegVfsInode, init_reg_vfs_inode);
         }
-        InodeType::DIR => {
+        INODE_TYPE_DIR => {
             init_timing!(init_dir_vfs_inode);
             start_timing!(init_dir_vfs_inode);
             vfs_inode.i_mode = umode | bindings::S_IFDIR as u16;
@@ -471,7 +479,7 @@ fn new_vfs_inode<'a, Type>(
             }
             end_timing!(InitDirVfsInode, init_dir_vfs_inode);
         }
-        InodeType::SYMLINK => {
+        INODE_TYPE_SYMLINK => {
             vfs_inode.i_mode = umode;
             // initialize the DRAM info and save it in the private pointer
             // let inode_info = Box::try_new(HayleyFsRegInodeInfo::new(ino))?;
@@ -487,7 +495,11 @@ fn new_vfs_inode<'a, Type>(
                 bindings::set_nlink(vfs_inode, 1);
             }
         }
-        InodeType::NONE => panic!("Inode type is none"),
+        INODE_TYPE_NONE => panic!("Inode type is none"),
+        _ => {
+            pr_info!("Inode {:?} has invalid type {:?}\n", ino, inode_type);
+            return Err(EINVAL);
+        }
     }
 
     vfs_inode.i_mtime = new_inode.get_mtime();
@@ -607,6 +619,10 @@ fn hayleyfs_link<'a>(
     // TODO: move unsafe cast to the wrapper
     let inode: &mut fs::INode = unsafe { &mut *old_dentry.d_inode().cast() };
     let target_inode = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
+    let target_inode = match target_inode.check_and_open() {
+        Ok(pi) => pi.flush().fence(),
+        Err(pi) => pi,
+    };
     inode.update_ctime();
     let target_inode = target_inode.update_ctime(inode.get_atime()).flush().fence();
 
@@ -643,6 +659,10 @@ fn hayleyfs_mkdir<'a>(
     InodeWrapper<'a, Clean, Complete, DirInode>, // new inode
 )> {
     let parent_inode = sbi.get_init_dir_inode_by_vfs_inode(dir.get_inner())?;
+    let parent_inode = match parent_inode.check_and_open() {
+        Ok(pi) => pi.flush().fence(),
+        Err(pi) => pi,
+    };
     dir.update_ctime_and_mtime();
     let parent_inode = parent_inode
         .update_ctime_and_mtime(dir.get_mtime())
@@ -669,6 +689,10 @@ fn hayleyfs_rmdir<'a>(
 )> {
     let inode = dentry.d_inode();
     let parent_inode = sbi.get_init_dir_inode_by_vfs_inode(dir.get_inner())?;
+    let parent_inode = match parent_inode.check_and_open() {
+        Ok(pi) => pi.flush().fence(),
+        Err(pi) => pi,
+    };
     dir.update_ctime_and_mtime();
     let parent_inode = parent_inode
         .update_ctime_and_mtime(dir.get_mtime())
@@ -686,6 +710,10 @@ fn hayleyfs_rmdir<'a>(
                     return Err(ENOTEMPTY);
                 }
             }
+            let pi = match pi.check_and_open() {
+                Ok(pi) => pi.flush().fence(),
+                Err(pi) => pi,
+            };
 
             // if it is, start deleting
             let pd = DentryWrapper::get_init_dentry(dentry_info)?;
@@ -827,6 +855,10 @@ fn hayleyfs_rename<'a>(
 )> {
     let old_name = old_dentry.d_name();
     let parent_inode = sbi.get_init_dir_inode_by_vfs_inode(old_dir.get_inner())?;
+    let parent_inode = match parent_inode.check_and_open() {
+        Ok(pi) => pi.flush().fence(),
+        Err(pi) => pi,
+    };
     old_dir.update_ctime_and_mtime();
     let parent_inode = parent_inode
         .update_ctime_and_mtime(old_dir.get_mtime())
@@ -859,11 +891,17 @@ fn hayleyfs_rename<'a>(
                 .flush()
                 .fence();
             match inode_type {
-                InodeType::REG | InodeType::SYMLINK => {
+                INODE_TYPE_REG | INODE_TYPE_SYMLINK => {
                     let new_parent_inode = if new_dir.i_ino() == old_dir.i_ino() {
                         None
                     } else {
-                        Some(sbi.get_init_dir_inode_by_vfs_inode(new_dir.get_inner())?)
+                        let new_parent_inode =
+                            sbi.get_init_dir_inode_by_vfs_inode(new_dir.get_inner())?;
+                        let new_parent_inode = match new_parent_inode.check_and_open() {
+                            Ok(pi) => pi.flush().fence(),
+                            Err(pi) => pi,
+                        };
+                        Some(new_parent_inode)
                     };
                     reg_inode_rename(
                         sbi,
@@ -874,8 +912,12 @@ fn hayleyfs_rename<'a>(
                         &old_dentry_info,
                     )
                 }
-                InodeType::DIR => {
+                INODE_TYPE_DIR => {
                     let new_dir = sbi.get_init_dir_inode_by_vfs_inode(new_dir.get_inner())?;
+                    let new_dir = match new_dir.check_and_open() {
+                        Ok(pi) => pi.flush().fence(),
+                        Err(pi) => pi,
+                    };
                     dir_inode_rename(
                         sbi,
                         old_dentry,
@@ -898,8 +940,8 @@ fn reg_inode_rename<'a>(
     sbi: &'a SbInfo,
     old_dentry: &fs::DEntry,
     new_dentry: &fs::DEntry,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: Option<InodeWrapper<'a, Clean, Start, DirInode>>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: Option<InodeWrapper<'a, Clean, Open, DirInode>>,
     old_dentry_info: &DentryInfo,
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -924,6 +966,10 @@ fn reg_inode_rename<'a>(
         Some(new_dentry_info) => {
             // overwriting a dentry
             let new_pi = sbi.get_init_reg_inode_by_vfs_inode(new_inode.get_inner())?;
+            let new_pi = match new_pi.check_and_open() {
+                Ok(pi) => pi.flush().fence(),
+                Err(pi) => pi,
+            };
             new_inode.update_ctime();
             let new_pi = new_pi.update_ctime(new_inode.get_ctime()).flush().fence();
             let (src_dentry, dst_dentry) = if let Some(new_dir) = new_dir {
@@ -954,6 +1000,10 @@ fn reg_inode_rename<'a>(
         None => {
             // creating a new dentry
             let pi = sbi.get_init_reg_inode_by_vfs_inode(old_inode.get_inner())?;
+            let pi = match pi.check_and_open() {
+                Ok(pi) => pi.flush().fence(),
+                Err(pi) => pi,
+            };
             old_inode.update_ctime();
             let pi = pi.update_ctime(old_inode.get_ctime()).flush().fence();
             let (src_dentry, dst_dentry) = if let Some(new_dir) = new_dir {
@@ -983,8 +1033,8 @@ fn dir_inode_rename<'a>(
     sbi: &'a SbInfo,
     old_dentry: &fs::DEntry,
     new_dentry: &fs::DEntry,
-    mut old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    mut old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_dentry_info: &DentryInfo,
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1016,6 +1066,10 @@ fn dir_inode_rename<'a>(
             Some(new_dentry_info) => {
                 // overwriting another dentry in the same dir
                 let new_pi = sbi.get_init_dir_inode_by_vfs_inode(new_inode.get_inner())?;
+                let new_pi = match new_pi.check_and_open() {
+                    Ok(pi) => pi.flush().fence(),
+                    Err(pi) => pi,
+                };
                 new_inode.update_ctime();
                 let new_pi = new_pi.update_ctime(new_inode.get_ctime()).flush().fence();
                 let (src_dentry, dst_dentry) = rename_overwrite_dentry_dir_inode_single_dir(
@@ -1033,6 +1087,10 @@ fn dir_inode_rename<'a>(
             None => {
                 // creating a new dentry in the same dir
                 let pi = sbi.get_init_dir_inode_by_vfs_inode(old_inode.get_inner())?;
+                let pi = match pi.check_and_open() {
+                    Ok(pi) => pi.flush().fence(),
+                    Err(pi) => pi,
+                };
                 old_inode.update_ctime();
                 let pi = pi.update_ctime(old_inode.get_ctime()).flush().fence();
                 let dst_dentry = get_free_dentry(sbi, &old_dir)?;
@@ -1058,6 +1116,10 @@ fn dir_inode_rename<'a>(
             Some(new_dentry_info) => {
                 // overwriting a dentry in a different directory
                 let new_pi = sbi.get_init_dir_inode_by_vfs_inode(new_inode.get_inner())?;
+                let new_pi = match new_pi.check_and_open() {
+                    Ok(pi) => pi.flush().fence(),
+                    Err(pi) => pi,
+                };
                 new_inode.update_ctime();
                 let new_pi = new_pi.update_ctime(new_inode.get_ctime()).flush().fence();
                 let (src_dentry, dst_dentry) = rename_overwrite_dentry_dir_inode_single_dir(
@@ -1075,6 +1137,10 @@ fn dir_inode_rename<'a>(
             None => {
                 // creating a new dentry in a different directory
                 let pi = sbi.get_init_dir_inode_by_vfs_inode(old_inode.get_inner())?;
+                let pi = match pi.check_and_open() {
+                    Ok(pi) => pi.flush().fence(),
+                    Err(pi) => pi,
+                };
                 old_inode.update_ctime();
                 let pi = pi.update_ctime(old_inode.get_ctime()).flush().fence();
                 let dst_dentry = get_free_dentry(sbi, &new_dir)?;
@@ -1101,8 +1167,8 @@ fn rename_overwrite_dentry_file_inode<'a>(
     sbi: &'a SbInfo,
     old_dentry_info: &DentryInfo,
     new_dentry_info: &DentryInfo,
-    rename_inode: &InodeWrapper<'a, Clean, Start, RegInode>,
-    dst_parent_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, RegInode>,
+    dst_parent_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1117,8 +1183,8 @@ fn rename_overwrite_dentry_dir_inode_single_dir<'a>(
     sbi: &'a SbInfo,
     old_dentry_info: &DentryInfo,
     new_dentry_info: &DentryInfo,
-    rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
-    dst_parent_inode: &mut InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
+    dst_parent_inode: &mut InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1139,8 +1205,8 @@ fn rename_new_dentry_dir_inode_single_dir<'a>(
     sbi: &'a SbInfo,
     dst_dentry: DentryWrapper<'a, Clean, Alloc>,
     old_dentry_info: &DentryInfo,
-    rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
-    dst_parent_inode: &mut InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
+    dst_parent_inode: &mut InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1159,8 +1225,8 @@ fn rename_new_dentry_dir_inode_crossdir<'a>(
     sbi: &'a SbInfo,
     dst_dentry: DentryWrapper<'a, Clean, Alloc>,
     old_dentry_info: &DentryInfo,
-    rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
-    dst_parent_inode: InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
+    dst_parent_inode: InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1184,8 +1250,8 @@ fn rename_new_dentry_file_inode<'a>(
     sbi: &'a SbInfo,
     dst_dentry: DentryWrapper<'a, Clean, Alloc>,
     old_dentry_info: &DentryInfo,
-    rename_inode: &InodeWrapper<'a, Clean, Start, RegInode>,
-    dst_parent_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, RegInode>,
+    dst_parent_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1198,8 +1264,8 @@ fn set_and_init_rename_ptr_file_inode<'a, S: StartOrAlloc + core::fmt::Debug>(
     sbi: &'a SbInfo,
     src_dentry: DentryWrapper<'a, Clean, Start>,
     dst_dentry: DentryWrapper<'a, Clean, S>,
-    rename_inode: &InodeWrapper<'a, Clean, Start, RegInode>,
-    dst_parent_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, RegInode>,
+    dst_parent_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1221,8 +1287,8 @@ fn set_and_init_rename_ptr_dir_inode_regular<'a, S: StartOrAlloc>(
     sbi: &'a SbInfo,
     src_dentry: DentryWrapper<'a, Clean, Start>,
     dst_dentry: DentryWrapper<'a, Clean, S>,
-    rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
-    dst_parent_inode: &mut InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
+    dst_parent_inode: &mut InodeWrapper<'a, Clean, Open, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
     DentryWrapper<'a, Clean, InitRenamePointer>,
@@ -1244,7 +1310,7 @@ fn set_and_init_rename_ptr_dir_inode_crossdir<'a, S: StartOrAlloc>(
     sbi: &'a SbInfo,
     src_dentry: DentryWrapper<'a, Clean, Start>,
     dst_dentry: DentryWrapper<'a, Clean, S>,
-    rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
+    rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
     dst_parent_inode: InodeWrapper<'a, Clean, IncLink, DirInode>,
 ) -> Result<(
     DentryWrapper<'a, Clean, ClearIno>,
@@ -1268,8 +1334,8 @@ fn rename_overwrite_file_inode<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    new_pi: InodeWrapper<'a, Clean, Start, RegInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, RegInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1288,9 +1354,9 @@ fn rename_overwrite_file_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    new_pi: InodeWrapper<'a, Clean, Start, RegInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, RegInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1311,8 +1377,8 @@ fn rename_overwrite_dir_inode_single_dir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1329,9 +1395,9 @@ fn rename_overwrite_dir_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1348,8 +1414,8 @@ fn rename_new_inode_dir_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     new_dir: InodeWrapper<'a, Clean, IncLink, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
@@ -1367,8 +1433,8 @@ fn rename_new_inode_dir_inode_single_dir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1385,7 +1451,7 @@ fn rename_new_file_inode_single_dir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1399,8 +1465,8 @@ fn rename_new_file_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, InitRenamePointer>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1415,7 +1481,7 @@ fn rename_overwrite_deallocation_file_inode<'a>(
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
     new_pi: InodeWrapper<'a, Clean, DecLink, RegInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1449,8 +1515,8 @@ fn rename_overwrite_deallocation_file_inode_crossdir<'a>(
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
     new_pi: InodeWrapper<'a, Clean, DecLink, RegInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1487,8 +1553,8 @@ fn rename_overwrite_deallocation_dir_inode_single_dir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
-    new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1531,9 +1597,9 @@ fn rename_overwrite_deallocation_dir_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
-    new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1581,8 +1647,8 @@ fn rename_new_dentry_deallocation_dir_inode_single_dir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
-    _new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    _new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1611,8 +1677,8 @@ fn rename_new_dentry_deallocation_dir_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
-    _new_pi: InodeWrapper<'a, Clean, Start, DirInode>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    _new_pi: InodeWrapper<'a, Clean, Open, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     new_dir: InodeWrapper<'a, Clean, IncLink, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
@@ -1652,7 +1718,7 @@ fn rename_deallocation_file_inode_single_dir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1678,8 +1744,8 @@ fn rename_deallocation_file_inode_crossdir<'a>(
     sbi: &SbInfo,
     src_dentry: DentryWrapper<'a, Clean, ClearIno>,
     dst_dentry: DentryWrapper<'a, Clean, Complete>,
-    old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
-    new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
+    old_dir: InodeWrapper<'a, Clean, Open, DirInode>,
+    new_dir: InodeWrapper<'a, Clean, Open, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
     DentryWrapper<'a, Clean, Free>,
@@ -1746,6 +1812,10 @@ fn hayleyfs_unlink<'a>(
         let pd = DentryWrapper::get_init_dentry(dentry_info)?;
         parent_inode_info.delete_dentry(dentry_info)?;
         let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
+        let pi = match pi.check_and_open() {
+            Ok(pi) => pi.flush().fence(),
+            Err(pi) => pi,
+        };
         inode.update_ctime();
         let pi = pi.update_ctime(inode.get_ctime()).flush().fence();
         let pd = pd.clear_ino().flush().fence();
@@ -1928,7 +1998,7 @@ fn hayleyfs_symlink<'a>(
 // TODO: return a type indicating that the truncate has completed
 fn hayleyfs_truncate<'a>(
     sbi: &SbInfo,
-    pi: InodeWrapper<'a, Clean, Start, RegInode>,
+    pi: InodeWrapper<'a, Clean, Open, RegInode>,
     size: i64,
 ) -> Result<()> {
     // we don't have to check if pi is a regular inode because we already

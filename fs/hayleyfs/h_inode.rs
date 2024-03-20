@@ -30,7 +30,8 @@ impl AnyInode for DirInode {}
 /// TODO: add the rest of the fields
 #[repr(C)]
 pub(crate) struct HayleyFsInode {
-    inode_type: InodeType, // TODO: currently 2 bytes? could be 1
+    inode_type: InodeType, // u8
+    open: u8, // if this is 1 after a crash, the inode may need to be cleaned up
     link_count: u16,
     mode: u16,
     uid: u32,
@@ -48,6 +49,7 @@ impl core::fmt::Debug for HayleyFsInode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("HayleyFsInode")
             .field("inode_type", &self.inode_type)
+            .field("open", &self.open)
             .field("link_count", &self.link_count)
             .field("mode", &self.mode)
             .field("uid", &self.uid)
@@ -133,7 +135,8 @@ impl HayleyFsInode {
         root_ino.ino = ROOT_INO;
         root_ino.link_count = 2;
         root_ino.size = 4096; // dir size always set to 4KB
-        root_ino.inode_type = InodeType::DIR;
+        root_ino.inode_type = INODE_TYPE_DIR;
+        root_ino.open = 0;
         root_ino.uid = unsafe {
             bindings::from_kuid(
                 &mut bindings::init_user_ns as *mut bindings::user_namespace,
@@ -211,7 +214,7 @@ impl HayleyFsInode {
 
     // TODO: update as fields are added
     pub(crate) fn is_initialized(&self) -> bool {
-        self.inode_type != InodeType::NONE && 
+        self.inode_type != INODE_TYPE_NONE && 
         // self.link_count != 0 && // link count may be 0 if the file has been completely unlinked but is still open
         self.mode != 0 &&
         // uid/gid == 0 is root
@@ -222,7 +225,7 @@ impl HayleyFsInode {
     // TODO: update as fields are added
     pub(crate) fn is_free(&self) -> bool {
         // if ANY field is non-zero, the inode is not free
-        self.inode_type == InodeType::NONE &&
+        self.inode_type == INODE_TYPE_NONE &&
         self.link_count == 0 &&
         self.mode == 0 &&
         self.uid == 0 &&
@@ -275,6 +278,36 @@ impl<'a, State, Op, Type> InodeWrapper<'a, State, Op, Type> {
 
     pub(crate) fn get_blocks(&self) -> u64 {
         self.inode.get_blocks()
+    }
+}
+
+impl<'a, State, Type> InodeWrapper<'a, State, Start, Type> {
+    // Ok case -- inode was not already open, open it
+    // Err case -- inode was already open, we can safely treat it as such
+    pub(crate) fn check_and_open(self) -> core::result::Result<InodeWrapper<'a, Dirty, Open, Type>, InodeWrapper<'a, Clean, Open, Type>> {
+        if self.inode.open != 1 {
+            self.inode.open = 1;
+            Ok(Self::new(self))
+        } else {
+            Err(Self::new(self))
+        }
+    }
+
+    pub(crate) fn check_if_open(self) -> core::result::Result<InodeWrapper<'a, State, Open, Type>, ()>
+    {
+        if self.inode.open == 1 {
+            Ok(Self::new(self))
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl<'a, State, Op: OpenStates, Type> InodeWrapper<'a, State, Op, Type> {
+    pub(crate) fn close(self) -> InodeWrapper<'a, Dirty, Closed, Type> {
+        pr_info!("closing ino {:?}\n", self.inode.ino);
+        self.inode.open = 0;
+        Self::new(self)
     }
 }
 
@@ -341,7 +374,7 @@ impl<'a, State, Op: Initialized> InodeWrapper<'a, State, Op, DirInode> {
     }
 }
 
-impl<'a, Type> InodeWrapper<'a, Clean, Start, Type> {
+impl<'a, Type> InodeWrapper<'a, Clean, Open, Type> {
     // this is only called in dirty_inode, so it consumes itself
     // the inode is flushed later in dirty_inode
     pub(crate) fn update_atime_consume(self, atime: bindings::timespec64) {
@@ -573,7 +606,7 @@ impl<'a> InodeWrapper<'a, Clean, Alloc, RegInode> {
 impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
     pub(crate) fn get_unlinked_ino(sbi: &'a SbInfo, ino: InodeNum, inode: *mut bindings::inode) -> Result<Self> {
         let pi = unsafe { sbi.get_inode_by_ino_mut(ino)? };
-        if pi.get_link_count() != 0 || (pi.get_type() != InodeType::REG && pi.get_type() != InodeType::SYMLINK) || pi.is_free() {
+        if pi.open == 0 || pi.get_link_count() != 0 || (pi.get_type() != INODE_TYPE_REG && pi.get_type() != INODE_TYPE_SYMLINK) || pi.is_free() {
             pr_info!("ERROR: inode {:?} is not unlinked\n", ino);
             pr_info!("inode {:?}: {:?}\n", ino, pi);
             Err(EINVAL)
@@ -670,7 +703,7 @@ impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
 impl<'a> InodeWrapper<'a, Clean, Dealloc, RegInode> {
     // NOTE: data page wrappers don't actually need to be free, they just need to be in ClearIno
     pub(crate) fn runtime_dealloc(self, _freed_pages: Vec<DataPageWrapper<'a, Clean, Free>>) -> InodeWrapper<'a, Dirty, Complete, RegInode> {
-        self.inode.inode_type = InodeType::NONE;
+        self.inode.inode_type = INODE_TYPE_NONE;
         // link count should already be 0
         assert!(self.inode.link_count == 0);
         self.inode.mode = 0;
@@ -786,7 +819,8 @@ impl<'a> InodeWrapper<'a, Clean, TooManyLinks, RegInode> {
 }
 
 unsafe fn dealloc_pm_inode(inode: &mut HayleyFsInode) {
-    inode.inode_type = InodeType::NONE;
+    inode.inode_type = INODE_TYPE_NONE;
+    inode.open = 0;
     inode.mode = 0;
     inode.uid = 0;
     inode.gid = 0;
@@ -825,7 +859,7 @@ impl<'a> InodeWrapper<'a, Clean, UnmapPages, DirInode> {
     // NOTE: data page wrappers don't actually need to be free, they just need to be in ClearIno
     // any state after ClearIno is fine
     pub(crate) fn iterator_dealloc(self, _freed_pages: DirPageListWrapper<Clean, Free>) -> InodeWrapper<'a, Dirty, Complete, DirInode> {
-        self.inode.inode_type = InodeType::NONE;
+        self.inode.inode_type = INODE_TYPE_NONE;
         // link count should 2 for ./.. but we don't store those in durable PM, so it's safe 
         // to just clear the link count if it is in fact 2
         assert!(self.inode.link_count == 1);
@@ -854,7 +888,7 @@ impl<'a> InodeWrapper<'a, Clean, UnmapPages, DirInode> {
     }
 
     pub(crate) fn runtime_dealloc(self, _freed_pages: Vec<DirPageWrapper<'a, Clean, Free>>) -> InodeWrapper<'a, Dirty, Complete, DirInode> {
-        self.inode.inode_type = InodeType::NONE;
+        self.inode.inode_type = INODE_TYPE_NONE;
         // link count should 1 for . but we don't store . or .. in durable PM, so it's safe 
         // to just clear the link count if it is in fact 1
         assert!(self.inode.link_count == 2);
@@ -907,7 +941,7 @@ impl<'a> InodeWrapper<'a, Clean, Free, RegInode> {
     ) -> Result<InodeWrapper<'a, Dirty, Alloc, RegInode>> {
         self.inode.link_count = 1;
         self.inode.ino = self.ino;
-        self.inode.inode_type = InodeType::REG;
+        self.inode.inode_type = INODE_TYPE_REG;
         self.inode.mode = mode;
         self.inode.blocks = 0;
         self.inode.uid = unsafe { (*inode.get_inner()).i_uid.val };
@@ -927,7 +961,7 @@ impl<'a> InodeWrapper<'a, Clean, Free, RegInode> {
     ) -> Result<InodeWrapper<'a, Dirty, Alloc, RegInode>> {
         self.inode.link_count = 1;
         self.inode.ino = self.ino;
-        self.inode.inode_type = InodeType::SYMLINK;
+        self.inode.inode_type = INODE_TYPE_SYMLINK;
         self.inode.mode = mode;
         self.inode.blocks = 0;
         self.inode.uid = unsafe { (*inode.get_inner()).i_uid.val };
@@ -966,7 +1000,7 @@ impl<'a> InodeWrapper<'a, Clean, Free, DirInode> {
         self.inode.link_count = 2;
         self.inode.ino = self.ino;
         self.inode.blocks = 0;
-        self.inode.inode_type = InodeType::DIR;
+        self.inode.inode_type = INODE_TYPE_DIR;
         self.inode.mode = mode | bindings::S_IFDIR as u16;
         self.inode.uid = unsafe { (*parent.get_inner()).i_uid.val };
         self.inode.gid = unsafe { (*parent.get_inner()).i_gid.val };
@@ -1062,7 +1096,6 @@ impl InodeAllocator for RBInodeAllocator {
             }
         }
 
-        // if start <= alloc_inodes.len().try_into()? {
         if num_alloc_inodes > 0 {
             while current_alloc_inode.is_some() {
                 if let Some(current_alloc_inode) = current_alloc_inode {

@@ -382,8 +382,8 @@ impl<'a> DentryWrapper<'a, Clean, SetRenamePointer> {
     pub(crate) fn init_rename_pointer_file_inode(
         self,
         src_dentry: DentryWrapper<'a, Clean, Renaming>,
-        _rename_inode: &InodeWrapper<'a, Clean, Start, RegInode>,
-        _parent_dir: &InodeWrapper<'a, Clean, Start, DirInode>,
+        _rename_inode: &InodeWrapper<'a, Clean, Open, RegInode>,
+        _parent_dir: &InodeWrapper<'a, Clean, Open, DirInode>,
     ) -> (
         DentryWrapper<'a, Clean, Renamed>,
         DentryWrapper<'a, Dirty, InitRenamePointer>,
@@ -409,7 +409,7 @@ impl<'a> DentryWrapper<'a, Clean, SetRenamePointer> {
     pub(crate) fn init_rename_pointer_dir_crossdir(
         self,
         src_dentry: DentryWrapper<'a, Clean, Renaming>,
-        _rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
+        _rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
         _dst_parent_dir: &InodeWrapper<'a, Clean, IncLink, DirInode>,
     ) -> (
         DentryWrapper<'a, Clean, Renamed>,
@@ -434,8 +434,8 @@ impl<'a> DentryWrapper<'a, Clean, SetRenamePointer> {
     pub(crate) fn init_rename_pointer_dir_regular(
         self,
         src_dentry: DentryWrapper<'a, Clean, Renaming>,
-        _rename_inode: &InodeWrapper<'a, Clean, Start, DirInode>,
-        dst_parent_dir: &mut InodeWrapper<'a, Clean, Start, DirInode>,
+        _rename_inode: &InodeWrapper<'a, Clean, Open, DirInode>,
+        dst_parent_dir: &mut InodeWrapper<'a, Clean, Open, DirInode>,
         // dst_parent_inode_info: &HayleyFsDirInodeInfo, // TODO: obtain in the fxn to make sure we use the right one
     ) -> Result<(
         DentryWrapper<'a, Clean, Renamed>,
@@ -599,9 +599,9 @@ pub(crate) fn hayleyfs_readdir(
         };
         let name = dentry.get_name_as_cstr();
         let file_type = match sbi.check_inode_type_by_inode_num(dentry.get_ino())? {
-            InodeType::REG => bindings::DT_REG,
-            InodeType::DIR => bindings::DT_DIR,
-            InodeType::SYMLINK => bindings::DT_LNK,
+            INODE_TYPE_REG => bindings::DT_REG,
+            INODE_TYPE_DIR => bindings::DT_DIR,
+            INODE_TYPE_SYMLINK => bindings::DT_LNK,
             _ => {
                 pr_info!("ERROR: unrecognized inode type\n");
                 return Err(EINVAL);

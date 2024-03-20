@@ -226,30 +226,47 @@ impl fs::Type for HayleyFs {
         // don't need the match statement, since the branches are basically identical
         let atime = unsafe { bindings::current_time(inode.get_inner()) };
         match inode_type {
-            InodeType::REG => {
-                // pr_info!("evict reg\n");
+            INODE_TYPE_REG => {
                 let inode = sbi
                     .get_init_reg_inode_by_vfs_inode(inode.get_inner())
                     .unwrap();
+                let inode = match inode.check_and_open() {
+                    Ok(inode) => inode.flush().fence(),
+                    Err(inode) => inode,
+                };
                 inode.update_atime_consume(atime);
             }
-            InodeType::DIR => match sbi.get_init_dir_inode_by_vfs_inode(inode.get_inner()) {
-                Ok(inode) => inode.update_atime_consume(atime),
+            INODE_TYPE_DIR => match sbi.get_init_dir_inode_by_vfs_inode(inode.get_inner()) {
+                Ok(inode) => {
+                    let inode = match inode.check_and_open() {
+                        Ok(inode) => inode.flush().fence(),
+                        Err(inode) => inode,
+                    };
+                    inode.update_atime_consume(atime)
+                }
                 Err(_) => {}
             },
-            InodeType::SYMLINK => {
-                // pr_info!("evict symlink\n");
+            INODE_TYPE_SYMLINK => {
                 let inode = sbi
                     .get_init_reg_inode_by_vfs_inode(inode.get_inner())
                     .unwrap();
+                let inode = match inode.check_and_open() {
+                    Ok(inode) => inode.flush().fence(),
+                    Err(inode) => inode,
+                };
                 inode.update_atime_consume(atime);
             }
-            InodeType::NONE => {}
+            INODE_TYPE_NONE => {}
+            _ => {
+                pr_info!(
+                    "Inode {:?} has invalid type {:?}\n",
+                    unsafe { (*inode.get_inner()).i_ino },
+                    inode_type
+                );
+            }
         }
 
         // TODO: DO THIS SAFELY WITH WRAPPERS
-        // raw_pi.atime = unsafe { bindings::current_time(inode.get_inner()) };
-        // unsafe { raw_pi.set_atime(bindings::current_time(inode.get_inner())) };
         hayleyfs_flush_buffer(raw_pi, core::mem::size_of::<HayleyFsInode>(), true);
     }
 
@@ -278,7 +295,10 @@ impl fs::Type for HayleyFs {
                 // free the inode and its pages
                 // TODO: handle errors
                 let pi = InodeWrapper::get_unlinked_ino(sbi, ino, inode.get_inner()).unwrap();
-                let _pi = finish_unlink(sbi, pi).unwrap();
+
+                let pi = finish_unlink(sbi, pi).unwrap();
+
+                let _pi = pi.close().flush().fence();
 
                 end_timing!(EvictRegInodePages, evict_reg_inode_pages);
             } else {
@@ -291,17 +311,27 @@ impl fs::Type for HayleyFs {
                 unsafe { (*inode.get_inner()).i_private = core::ptr::null_mut() };
                 let pages = inode_info.get_all_pages().unwrap();
                 sbi.ino_data_page_tree.insert_inode(ino, pages).unwrap();
+
+                let pi = sbi
+                    .get_init_reg_inode_by_vfs_inode(inode.get_inner())
+                    .unwrap();
+                match pi.check_if_open() {
+                    Ok(open_inode) => {
+                        let _ = open_inode.close().flush().fence();
+                    }
+                    Err(()) => {}
+                }
             }
         } else if unsafe { bindings::S_ISDIR(mode.try_into().unwrap()) } {
             init_timing!(evict_dir_inode_pages);
             start_timing!(evict_dir_inode_pages);
             if sbi.inodes_to_free.check_and_remove(ino) {
-                // pr_info!("{:?} has already been freed\n", ino);
                 let pi = sbi
                     .get_init_dir_inode_by_vfs_inode(inode.get_inner())
                     .unwrap();
                 let pi = pi.set_unmap_page_state().unwrap();
-                let _pi = rmdir_delete_pages(sbi, pi).unwrap();
+                let pi = rmdir_delete_pages(sbi, pi).unwrap();
+                let _pi = pi.close().flush().fence();
             } else {
                 // TODO: handle removed open directories?
                 // using from_foreign should make sure the info structure is dropped here
@@ -313,9 +343,20 @@ impl fs::Type for HayleyFs {
                 unsafe { (*inode.get_inner()).i_private = core::ptr::null_mut() };
                 let pages = inode_info.get_all_pages().unwrap();
                 sbi.ino_dir_page_tree.insert_inode(ino, pages).unwrap();
+
+                let pi = sbi
+                    .get_init_dir_inode_by_vfs_inode(inode.get_inner())
+                    .unwrap();
+                match pi.check_if_open() {
+                    Ok(open_inode) => {
+                        let _ = open_inode.close().flush().fence();
+                    }
+                    Err(()) => {}
+                }
             }
             end_timing!(EvictDirInodePages, evict_dir_inode_pages);
         }
+
         unsafe {
             bindings::truncate_inode_pages(&mut (*inode.get_inner()).i_data, 0);
             bindings::clear_inode(inode.get_inner());
@@ -598,7 +639,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
                 *lc += 1;
             } else {
                 let live_ino_type = sbi.check_inode_type_by_inode_num(live_inode)?;
-                if live_ino_type == InodeType::DIR {
+                if live_ino_type == INODE_TYPE_DIR {
                     // dirs always point to themselves, so the first dentry we find that
                     // refers to a dir inode is actually its second link
                     real_link_counts.try_insert(live_inode, 2)?;

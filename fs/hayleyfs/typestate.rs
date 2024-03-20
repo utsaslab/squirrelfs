@@ -42,11 +42,24 @@ pub(crate) struct Msynced {} // TODO: is this necessary?
 pub(crate) struct Recovery {}
 pub(crate) struct TooManyLinks {}
 pub(crate) struct Recovering {}
+pub(crate) struct Open {}
+pub(crate) struct Closed {}
+
+// `OpenStates` is only safe to implement for typestates that
+// are only reachable when an inode is open
+pub(crate) trait OpenStates {}
+impl OpenStates for Open {}
+impl OpenStates for IncLink {}
+impl OpenStates for Written {}
+impl OpenStates for DecLink {}
+impl OpenStates for UnmapPages {}
+impl OpenStates for Complete {}
 
 /// Traits to allow a transition from multiple legal typestates
 pub(crate) trait Initialized {}
 impl Initialized for Init {}
 impl Initialized for Start {}
+impl Initialized for Open {}
 impl Initialized for Complete {}
 impl Initialized for IncLink {}
 impl Initialized for Written {}
@@ -62,7 +75,7 @@ impl AddLink for IncLink {}
 
 pub(crate) trait RenameSource {}
 impl RenameSource for ClearIno {} // Normal renaming
-impl RenameSource for Recovering {}  // Recovery renaming
+impl RenameSource for Recovering {} // Recovery renaming
 
 // undescriptive name because this is used in multiple unrelated places
 // 1. setting a rename pointer

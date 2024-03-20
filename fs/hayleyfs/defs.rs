@@ -46,15 +46,11 @@ pub(crate) enum PageType {
     DATA,
 }
 
-#[repr(C)]
-#[allow(dead_code)]
-#[derive(PartialEq, Debug, Copy, Clone)]
-pub(crate) enum InodeType {
-    NONE = 0,
-    REG,
-    DIR,
-    SYMLINK,
-}
+pub(crate) type InodeType = u8;
+pub(crate) const INODE_TYPE_NONE: InodeType = 0;
+pub(crate) const INODE_TYPE_REG: InodeType = 1;
+pub(crate) const INODE_TYPE_DIR: InodeType = 2;
+pub(crate) const INODE_TYPE_SYMLINK: InodeType = 3;
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum DropType {
@@ -400,7 +396,7 @@ impl SbInfo {
         }
 
         let pi = unsafe { self.get_inode_by_ino_mut(ino)? };
-        if pi.get_type() != InodeType::REG && pi.get_type() != InodeType::SYMLINK {
+        if pi.get_type() != INODE_TYPE_REG && pi.get_type() != INODE_TYPE_SYMLINK {
             pr_info!("ERROR: inode {:?} is not a regular inode\n", ino);
             pr_info!("{:?}\n", pi);
             return Err(EPERM);
@@ -430,7 +426,7 @@ impl SbInfo {
             return Err(EINVAL);
         }
         let pi = unsafe { self.get_inode_by_ino_mut(ino)? };
-        if pi.get_type() != InodeType::DIR {
+        if pi.get_type() != INODE_TYPE_DIR {
             pr_info!("ERROR: inode {:?} is not a directory\n", ino);
             pr_info!("pi: {:?}\n", pi);
             return Err(EPERM);
