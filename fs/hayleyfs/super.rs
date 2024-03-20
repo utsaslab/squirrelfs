@@ -7,6 +7,7 @@ use core::{ffi, ptr, sync::atomic::Ordering};
 use defs::*;
 use h_dir::*;
 use h_inode::*;
+use index::*;
 use kernel::prelude::*;
 use kernel::{bindings, c_str, fs, linked_list::List, rbtree::RBTree, types::ForeignOwnable};
 use namei::*;
@@ -20,6 +21,7 @@ mod h_dir;
 mod h_file;
 mod h_inode;
 mod h_symlink;
+mod index;
 mod ioctl;
 mod namei;
 mod pm;
@@ -102,6 +104,8 @@ impl fs::Type for HayleyFs {
             )?;
 
             data.inode_allocator = Some(InodeAllocator::new(ROOT_INO + 1, data.num_inodes)?);
+
+            data.durable_index_allocator = Some(RBIndexAllocator::new(data.num_inodes)?);
 
             // initialize superblock
             let sb = sb.init(
@@ -734,6 +738,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         ROOT_INO + 1,
         sbi.num_inodes,
     )?);
+    sbi.durable_index_allocator = Some(RBIndexAllocator::rebuild(sbi.get_durable_index_table()?)?);
     // reborrow the super block to appease the borrow checker
     let sb = sbi.get_super_block_mut().unwrap();
     sb.set_clean_unmount(false);
@@ -863,11 +868,13 @@ impl PmDevice for SbInfo {
         self.size = num_blocks * pgsize_i64;
         self.num_blocks = num_blocks.try_into()?;
 
+        let index_node_size_u64: u64 = INDEX_NODE_SIZE.try_into()?;
+
         let device_size: u64 = self.size.try_into()?;
         let data_pages_per_inode = 4;
         let bytes_per_inode = (data_pages_per_inode * HAYLEYFS_PAGESIZE)
             + (data_pages_per_inode * PAGE_DESCRIPTOR_SIZE)
-            + INDEX_NODE_SIZE;
+            + index_node_size_u64;
         pr_info!("device size: {:?}\n", device_size);
         let num_inodes: u64 = device_size / bytes_per_inode;
         let inode_table_size = num_inodes * INODE_SIZE;
@@ -875,7 +882,7 @@ impl PmDevice for SbInfo {
         let num_pages = num_inodes * data_pages_per_inode;
         let page_desc_table_size = num_pages * PAGE_DESCRIPTOR_SIZE;
         let page_desc_table_pages = (page_desc_table_size / HAYLEYFS_PAGESIZE) + 1;
-        let durable_index_size = num_inodes * INDEX_NODE_SIZE;
+        let durable_index_size = num_inodes * index_node_size_u64;
         let durable_index_pages = (durable_index_size / HAYLEYFS_PAGESIZE) + 1;
         pr_info!(
             "size of inode table (MB): {:?}\n",

@@ -1,5 +1,6 @@
 use crate::balloc::*;
 use crate::h_inode::*;
+use crate::index::*;
 use crate::typestate::*;
 use crate::volatile::*;
 use core::{
@@ -37,9 +38,11 @@ pub(crate) const INODE_SIZE: u64 = 96;
 pub(crate) const PAGE_DESCRIPTOR_SIZE: u64 = 32; // TODO: can we reduce this?
 pub(crate) const SB_SIZE: u64 = HAYLEYFS_PAGESIZE;
 
-pub(crate) const PAGES_PER_INDEX_NODE: u64 = 4;
+// TODO: experiment with the best size for this; 4 might be too small to be efficient,
+// but if it's too big we waste space because it can't all be used
+pub(crate) const PAGES_PER_INDEX_NODE: usize = 4;
 // 8 bytes per page number, plus linked list next pointer
-pub(crate) const INDEX_NODE_SIZE: u64 = PAGES_PER_INDEX_NODE * 8 + 8;
+pub(crate) const INDEX_NODE_SIZE: usize = PAGES_PER_INDEX_NODE * 8 + 8;
 
 #[repr(C)]
 #[allow(dead_code)]
@@ -167,6 +170,7 @@ pub(crate) struct SbInfo {
     // optional because we can't set it up until we know how big the fs is
     pub(crate) page_allocator: Option<PerCpuPageAllocator>,
     pub(crate) inode_allocator: Option<RBInodeAllocator>,
+    pub(crate) durable_index_allocator: Option<RBIndexAllocator>,
 
     pub(crate) inodes_to_free: InodeToFreeList,
 
@@ -212,6 +216,7 @@ impl SbInfo {
             ino_dentry_tree: InoDentryTree::new().unwrap(),
             page_allocator: None,
             inode_allocator: None,
+            durable_index_allocator: None,
             inodes_to_free: InodeToFreeList::new().unwrap(),
             // inode_allocator: InodeAllocator::new(ROOT_INO + 1).unwrap(),
             mount_opts: HayleyfsParams::default(),
@@ -352,6 +357,19 @@ impl SbInfo {
         };
         let table =
             unsafe { slice::from_raw_parts_mut(inode_table_addr, self.num_inodes.try_into()?) };
+        Ok(table)
+    }
+
+    pub(crate) fn get_durable_index_table<'a>(&self) -> Result<&'a mut [DurablePageNode]> {
+        let durable_index_table_addr = unsafe {
+            self.virt_addr
+                .offset((HAYLEYFS_PAGESIZE * self.get_durable_index_start_page()).try_into()?)
+                as *mut DurablePageNode
+        };
+        // use number of inodes for the size of the table since there is one node for each inode
+        let table = unsafe {
+            slice::from_raw_parts_mut(durable_index_table_addr, self.num_inodes.try_into()?)
+        };
         Ok(table)
     }
 

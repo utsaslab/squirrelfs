@@ -305,7 +305,6 @@ impl<'a, State, Type> InodeWrapper<'a, State, Start, Type> {
 
 impl<'a, State, Op: OpenStates, Type> InodeWrapper<'a, State, Op, Type> {
     pub(crate) fn close(self) -> InodeWrapper<'a, Dirty, Closed, Type> {
-        pr_info!("closing ino {:?}\n", self.inode.ino);
         self.inode.open = 0;
         Self::new(self)
     }
