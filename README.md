@@ -102,10 +102,20 @@ sudo make modules_install install
 ```
 While building the kernel, it may prompt you to select some configuration options interactively. Select the default option by hitting Enter on each prompt.
 
-6. Reboot the machine.
-7. Check that the correct kernel is running; `uname -r` should output `6.3.0-squirrelfs+` or similar. 
-    - If the output is different, check that the kernel built and installed without errors and ensure GRUB options are set to boot into the correct kernel.
-8. Run `sudo mkdir /mnt/pmem/` to create a mount point for SquirrelFS.
+## Kernel setup 
+
+If using a VM, run these steps on the VM. 
+
+1. `cd` to `squirrelfs/`
+2. Copy `SQUIRRELFS_CONFIG` to `.config`.
+    - Note: this step should only be done after installing Rust dependencies with `dependencies/rust_dependencies.sh`. If Rust is not properly set up before copying the configuration file, one required option (`CONFIG_RUST`) will be set incorrectly.
+3. Build the kernel with `make LLVM=-14 -j <number of cores>`. `LLVM=14` is necessary to build Rust components. (45 minutes on a QEMU/KVM VM with 16GB RAM and 8 cores)
+    - Note: while building the kernel, it may prompt you to select some configuration options interactively.
+    - Select the first option (i.e. 1,2,3 => choose 1 OR N/y => choose N)
+4. Install the kernel with `sudo make modules_install install` (5 minutes on VM)
+5. Reboot the machine or VM
+6. Check that everything was set up properly. `uname -r` should return a kernel version number starting with `6.3.0`. 
+7.  Run `sudo mkdir /mnt/pmem/` to create a mount point for the persistent memory device.
 
 The above steps only need to be followed the first time after cloning the kernel. The steps for subsequent builds of the entire kernel are:
 1. `make LLVM=-14 -j <number of cores>`
@@ -171,3 +181,20 @@ If you want to start from a different configuration file, make sure the followin
      12. Set `CONFIG_DEBUG_PREEMPTION` to N
      13. Set `CONFIG_LOCALVERSION_AUTO` to N
      14. Set `CONFIG_TRANSPARENT_HUGEPAGE` to Y
+
+## Using rust-analyzer
+
+If you'd like to run `rust-analyzer`, do the following:
+1. `cd` to `linux/fs/squirrelfs`
+2. Retrieve your `sysroot` by typing `rustc --print sysroot` into the terminal
+3. Open `rust-project.json` and replace `sysroot` with the output of step 2. Additionally, replace `root_module` with the absolute path to the `super.rs` file in `linux/fs/squirrelfs`
+
+To use `rust-analyzer` with a text editor like VSCode, open your `settings.json` for VSCode and insert the following lines:
+```
+"rust-analyzer.linkedProjects": [
+    "<absolute path to this repo>/linux/fs/hayleyfs/rust-project.json"
+],
+```
+Finally, replace the path above to the absolute path of the `rust-project.json` file you modified above.
+
+For other text editors, reference this [man page](https://rust-analyzer.github.io/manual.html#non-cargo-based-projects).
