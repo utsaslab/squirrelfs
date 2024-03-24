@@ -72,6 +72,21 @@ If using a VM, run these steps on the VM.
 5. Run `dependencies/rust_dependencies.sh` to install dependencies required for the Rust for Linux build system.
    1. This script overrides the toolchain for the `squirrelfs` directory to use the current required version and installs `rust-fmt`, `rust-src`, and `bindgen`. 
 
+If you'd like to run `rust-analyzer`, do the following:
+1. `cd` to `squirrelfs/fs/hayleyfs`
+2. Retrieve your `sysroot` by typing `rustc --print sysroot` into the terminal
+3. Open `rust-project.json` and replace `sysroot` with the output of step 2. Additionally, replace `root_module` with the absolute path to the `super.rs` file in `squirrelfs/fs/hayleyfs`
+
+To use `rust-analyzer` with a text editor like VSCode, open your `settings.json` for VSCode and insert the following lines:
+```
+"rust-analyzer.linkedProjects": [
+    "/home/rustfs/squirrelfs/fs/hayleyfs/rust-project.json"
+],
+```
+Finally, replace the path above to the absolute path of the `rust-project.json` file you modified above.
+
+For other text editors, reference this [man page](https://rust-analyzer.github.io/manual.html#non-cargo-based-projects).
+
 ## Kernel setup 
 
 If using a VM, run these steps on the VM. 
