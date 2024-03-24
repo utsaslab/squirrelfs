@@ -1926,7 +1926,7 @@ fn hayleyfs_symlink<'a>(
 }
 
 // TODO: return a type indicating that the truncate has completed
-fn hayleyfs_truncate<'a>(
+pub(crate) fn hayleyfs_truncate<'a>(
     sbi: &SbInfo,
     pi: InodeWrapper<'a, Clean, Start, RegInode>,
     size: i64,
