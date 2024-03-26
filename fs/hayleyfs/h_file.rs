@@ -33,7 +33,7 @@ enum FALLOC_FLAG {
     FALLOC_FL_COLLAPSE_RANGE = 0x08,
     FALLOC_FL_ZERO_RANGE = 0x10,
     FALLOC_FL_INSERT_RANGE = 0x20,
-    FALLOC_FL_UNSHARE_RANGE = 0x40,
+    // FALLOC_FL_UNSHARE_RANGE = 0x40,
 }   
 
 pub(crate) struct FileOps;
@@ -159,7 +159,7 @@ impl file::Operations for FileOps {
 
         let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
         // let pi_info = pi.get_inode_info()?;
-        let initial_size = pi.get_size();
+        let initial_size: i64 = pi.get_size() as i64;
 
         // Error checks beforehand
 
@@ -167,7 +167,7 @@ impl file::Operations for FileOps {
             if final_file_size > initial_size {
                 match hayleyfs_truncate(sbi, pi, final_file_size){
                     Ok(_) => (),
-                    Err(e) => {
+                    Err(_e) => {
                         // do something here to return the right error code
 
                         return Ok(1); // <-- change me.
