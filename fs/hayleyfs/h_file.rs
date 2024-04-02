@@ -36,6 +36,7 @@ enum FALLOC_FLAG {
     // FALLOC_FL_UNSHARE_RANGE = 0x40,
 }   
 
+
 pub(crate) struct FileOps;
 #[vtable]
 impl file::Operations for FileOps {
@@ -155,22 +156,115 @@ impl file::Operations for FileOps {
         let sb = inode.i_sb();
         let fs_info_raw = unsafe { (*sb).s_fs_info };
         let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
-        let final_file_size : i64 = _len + _offset;  
+          
 
         let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
         // let pi_info = pi.get_inode_info()?;
-        let initial_size: i64 = pi.get_size() as i64;
+        let initial_size: u64 = pi.get_size() as u64;
 
-        // Error checks beforehand
+        /* 
+         *  Error checks beforehand, sourced from below:
+         *  https://man7.org/linux/man-pages/man2/fallocate.2.html#ERRORS
+         */
+        let falloc_fl_insert_range = _mode & FALLOC_FLAG::FALLOC_FL_INSERT_RANGE as i32 == 1;
+        let falloc_fl_collapse_range = _mode & FALLOC_FLAG::FALLOC_FL_COLLAPSE_RANGE as i32 == 1;
+        let falloc_fl_keep_size = _mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1;
+        let falloc_fl_zero_range = _mode & FALLOC_FLAG::FALLOC_FL_ZERO_RANGE as i32 == 1;
+        let falloc_fl_punch_hole = _mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 1;
+
+        /* 
+         * EINVAL: offset was less than 0, or len was less than or equal to
+         * 0.
+         */
+        if _offset < 0 || _len <= 0 {
+            return Err(EINVAL);
+        }
+
+        pr_info!("Gets past offset and length check");
+
+        let len_u64: u64 = _len.try_into().unwrap();
+        let offset_u64: u64 = _offset.try_into().unwrap();
+        let final_file_size : u64 = len_u64 + offset_u64;
+        
+        /* 
+         * EFBIG: offset+len exceeds the maximum file size.
+         */
+        if final_file_size > MAX_FILE_SIZE {
+            return Err(EFBIG);
+        }
+
+        pr_info!("Gets past file size check");
+
+        /* 
+         * EFBIG: mode is FALLOC_FL_INSERT_RANGE, and the current file
+         * size+len exceeds the maximum file size.
+         */
+        if falloc_fl_insert_range && (initial_size + len_u64 > MAX_FILE_SIZE) {
+            pr_info!("Fails the insert_range check.");
+            return Err(EFBIG);
+        }
+
+        /* 
+         * EINTR: A signal was caught during execution; see signal(7).
+         */
+        // TODO: implement me!
+
+        /* 
+         * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE and the range specified
+         * by offset plus len reaches or passes the end of the file.
+         * 
+         * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
+         * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
+         * multiple of the filesystem block size.
+         */
+        if falloc_fl_collapse_range && 
+            offset_u64 + len_u64 >= initial_size ||
+            (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0) // Treat pages as blocks?
+        { 
+            return Err(EINVAL);
+        }
+        
+        /*  
+         * EINVAL: mode is FALLOC_FL_INSERT_RANGE and the range specified by
+         * offset reaches or passes the end of the file.
+         * 
+         * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
+         * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
+         * multiple of the filesystem block size.
+         */
+        if falloc_fl_insert_range && 
+            (offset_u64 >= initial_size) ||
+            (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0)
+        { 
+            return Err(EINVAL);
+        }
+        
+        /*
+        * EINVAL: mode contains one of FALLOC_FL_COLLAPSE_RANGE or
+        * FALLOC_FL_INSERT_RANGE and also other flags; no other
+        * flags are permitted with FALLOC_FL_COLLAPSE_RANGE or
+        * FALLOC_FL_INSERT_RANGE.
+        */
+        if (falloc_fl_insert_range && falloc_fl_collapse_range) ||
+            (
+                (falloc_fl_insert_range ^ falloc_fl_collapse_range) && 
+                falloc_fl_keep_size || falloc_fl_zero_range || falloc_fl_punch_hole
+            )
+        {
+            return Err(EINVAL);
+        }
+
+        /*
+         * Implementation below.
+         */
 
         if _mode == 0 {
             if final_file_size > initial_size {
-                match hayleyfs_truncate(sbi, pi, final_file_size){
+                match hayleyfs_truncate(sbi, pi, final_file_size as i64){
                     Ok(_) => (),
                     Err(_e) => {
                         // do something here to return the right error code
-
-                        return Ok(1); // <-- change me.
+                        return Err(EINVAL);
                     }
                 }    
             } 
@@ -178,7 +272,7 @@ impl file::Operations for FileOps {
         
         else if _mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1 {
             // truncate extends the flie size when the size is greater than the current size
-            match hayleyfs_truncate(sbi, pi, final_file_size){
+            match hayleyfs_truncate(sbi, pi, final_file_size as i64){
                 Ok(_) => pr_info!("OK"),
                 Err(e) => pr_info!("{:?}", e)
             }
@@ -188,6 +282,7 @@ impl file::Operations for FileOps {
         
         else if _mode & FALLOC_FLAG::FALLOC_FL_COLLAPSE_RANGE as i32 == 1 { //Charan, Lindsey
             
+
         }
 
         else if _mode & FALLOC_FLAG::FALLOC_FL_ZERO_RANGE as i32 == 1 { //Lindsey
@@ -195,7 +290,7 @@ impl file::Operations for FileOps {
         }
 
         else if _mode & FALLOC_FLAG::FALLOC_FL_INSERT_RANGE as i32 == 1 { //Kaustubh
-
+ 
         }
         else if _mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 1 { //Devon
 
@@ -203,7 +298,7 @@ impl file::Operations for FileOps {
 
         if _mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1 {
             // reset file size to original <-- truncate will add zeroed out pages
-            inode.i_size_write(initial_size.try_into()?);
+            
         }
 
         Ok(0)
