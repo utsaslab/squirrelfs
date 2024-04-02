@@ -48,6 +48,7 @@ All steps in this section should be run on the host, regardless of whether you a
 1. Get the VM image: `wget https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (8GB)
 2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 25GB)
 3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp 8`
+   - Do note that if multiple people are sharing the same machine, the previous command may result in a port collision. To be safe, change `2222-:22` in the previous line to a different host port that isn't in use (for example, `2223-:22`). You can use `sudo lsof -i:PORT` to check if a port is in use.
 4. SSH into the VM using `ssh rustfs@localhost -p 2222`. The username and password are both `rustfs`.
     - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message. Open another terminal window and SSH in; it may take a few seconds before you can connect to the VM. 
 5. The VM has the SquirrelFS kernel installed; however, please clone and install the most up-to-date version from GitHub, as the image is not regularly updated.
