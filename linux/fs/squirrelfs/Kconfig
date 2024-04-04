@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config SQUIRRELFS
+	tristate "SquirrelFS file system"
+	depends on FS_DAX
+	depends on X86_PMEM_LEGACY
+	help
+	  Enable this to build the SquirrelFS persistent memory file system. 
+
+config SQUIRRELFS_DEBUG
+	bool "SquirrelFS debugging support"
+	depends on SQUIRRELFS
+	help 
+	  Enable this to compile the kernel with support for using Chipmunk to test SquirrelFS. 
