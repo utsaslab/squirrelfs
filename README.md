@@ -31,7 +31,7 @@ This section describes how to download and run SquirrelFS on a pre-made VM with 
 
 ### VM setup
 1. Download the pre-made VM image: `curl -o rustfs.img.tar.gz https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (8GB)
-2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 25GB)
+2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 25GB; may take up to 50GB)
 3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <# cores>`
 4. SSH into the VM using `ssh rustfs@localhost -p 2222`. The username and password are both `rustfs`.
     - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message. Open another terminal window and SSH in; it may take a few seconds before you can connect to the VM. 
@@ -42,7 +42,7 @@ This section describes how to download and run SquirrelFS on a pre-made VM with 
     2. You will need to create a GitHub SSH key in the VM and add it to your GitHub account to pull from the repository.
 2. Run `dependencies/dependencies.sh` to ensure all dependencies are up to date.
 3. Run `cp SQUIRRELFS_CONFIG .config` to use SquirrelFS's kernel configurations.
-4. Build and install the most up-to-date version of the kernel (about X min with 16GB RAM and 8 cores):
+4. Build and install the most up-to-date version of the kernel (on a VM with 16GB RAM and 8 cores: ~45 min to compile, ~5 min to install):
 ```
 cd linux
 make LLVM=-14 -j <# cores>
@@ -92,7 +92,7 @@ If using a VM, run these steps on the VM.
     - Note: this script overrides the Rust toolchain for the `squirrelfs` directory to use the version required by the kernel and installs `rust-fmt`, `rust-src`, and `bindgen`.
     - Note: this script installs `default-jdk` and `default-jre` so that the Alloy model can be checked.
 4. Copy `SQUIRRELFS_CONFIG` to `.config`.
-5. Build and install the kernel (about X min with 16GB RAM and 8 cores):
+5. Build and install the kernel (on a VM with 16GB RAM and 8 cores: ~45 min to compile, ~5 min to install):
 ```
 cd linux
 make LLVM=-14 -j <# cores>
