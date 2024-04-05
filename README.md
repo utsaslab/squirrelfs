@@ -25,14 +25,6 @@ SquirrelFS is a file system for persistent memory (PM) written in Rust that uses
 
 SquirrelFS can be run in a VM or on a baremetal machine.
 
-<!-- The experiments described in the paper used the following:
-1. Debian Bookworm
-2. Intel processor supporting `clwb`
-   1. This can be checked using `lscpu | grep clwb`. SquirrelFS can be run on processors that only have `clflush`/`clflushopt` support, but this may impact performance.
-2. 64 cores
-3. 128GB Intel Optane DC Persistent Memory
-4. 128GB DRAM -->
-
 ## Quickstart guide
 
 This section describes how to download and run SquirrelFS on a pre-made VM with emulated PM. For more detailed instructions on running SquirrelFS on baremetal or a custom-made VM, see below.
@@ -98,6 +90,7 @@ If using a VM, run these steps on the VM.
 2. Install Rust by following the instructions at the following link: https://www.rust-lang.org/tools/install
 3. Run `dependencies/dependencies.sh` to install packages required to build the kernel. 
     - Note: this script overrides the Rust toolchain for the `squirrelfs` directory to use the version required by the kernel and installs `rust-fmt`, `rust-src`, and `bindgen`.
+    - Note: this script installs `default-jdk` and `default-jre` so that the Alloy model can be checked.
 4. Copy `SQUIRRELFS_CONFIG` to `.config`.
 5. Build and install the kernel (about X min with 16GB RAM and 8 cores):
 ```
@@ -129,7 +122,7 @@ The above steps only need to be followed the first time after cloning the kernel
 
 ## Artifact evaluation
 
-Detailed instructions to run experiments and reproduce the results in the paper can be found in [artifact-evaluation.md](artifact-evaluation.md).
+Detailed instructions to run experiments and reproduce the results in the paper can be found in [artifact_evaluation.md](artifact_evaluation.md).
 
 ## Setting up PM
 ### PM emulation
