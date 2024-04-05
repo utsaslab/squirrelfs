@@ -1,4 +1,4 @@
 #!/bin/bash 
 
-./kernel_dependencies.sh
-./rust_dependencies.sh
+dependencies/kernel_dependencies.sh
+dependencies/rust_dependencies.sh

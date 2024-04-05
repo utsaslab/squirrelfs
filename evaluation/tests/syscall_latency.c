@@ -10,7 +10,7 @@
 const int TEST_ITERATIONS=10;
 const int OP_ITERATIONS=1000;
 const char *MOUNT_POINT = "/mnt/pmem";
-const char *OUTPUT_DIR = "output-temp";
+const char *OUTPUT_DIR = "output-ae";
 const int NAME_LEN = 128;
 const int SMALL_BUFFER_SIZE = 1024;
 const int MED_BUFFER_SIZE = 1024*16;
