@@ -3,20 +3,18 @@ FS=$1
 TEST=$2
 
 iterations=10
-# dirs=100
 dirs=32
 files=1000
 file_size=$((1024*1024))
 fill_device_file_size=$((1024*32))
-# filename=remount_squirrelfs/${FS}/remount_timing/$TEST
-filename=output-new/${FS}/remount_timing/$TEST
+filename=output-ae/${FS}/remount_timing/$TEST
 mkdir -p $filename
 
 time_mount() {
     for i in $(seq $iterations)
     do
         if [ $FS = "squirrelfs" ]; then 
-            { time mount -t hayleyfs /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time mount -t squirrelfs /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
         elif [ $FS = "nova" ]; then 
             { time mount -t NOVA /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
         elif [ $FS = "winefs" ]; then 
@@ -30,7 +28,7 @@ time_mount() {
 
 init_mount() {
     if [ $FS = "squirrelfs" ]; then 
-        sudo mount -t hayleyfs -o init /dev/pmem0 /mnt/pmem/
+        sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "nova" ]; then 
         sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "winefs" ]; then 
@@ -192,7 +190,7 @@ fill_device() {
 }
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo -E insmod $HOME/squirrelfs/fs/hayleyfs/hayleyfs.ko
+    sudo -E insmod $HOME/squirrelfs/fs/squirrelfs/squirrelfs.ko
 elif [ $FS = "nova" ]; then 
     sudo -E insmod $HOME/squirrelfs/fs/nova/nova.ko
 elif [ $FS = "winefs" ]; then 
@@ -238,7 +236,7 @@ then
     for i in $(seq $iterations)
         do 
         if [ $FS = "squirrelfs" ]; then 
-            { time sudo mount -t hayleyfs -o init /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
         elif [ $FS = "nova" ]; then 
             { time sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
         elif [ $FS = "winefs" ]; then 
@@ -323,7 +321,7 @@ echo "done running tests"
 
 if [ $FS = "squirrelfs" ]; then 
     echo "removing module"
-    sudo rmmod hayleyfs
+    sudo rmmod squirrelfs
 elif [ $FS = "nova" ]; then 
     sudo rmmod nova 
 elif [ $FS = "winefs" ]; then

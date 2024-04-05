@@ -4,7 +4,7 @@
 
 FS=$1
 timestamp="$(date +"%s")" 
-output_dir="output-25M"
+output_dir="output-ae"
 numthreads=8
 iterations=5
 
@@ -42,7 +42,7 @@ run_workload() {
 for i in $(seq 5 $iterations)
     do
     if [ $FS = "squirrelfs" ]; then 
-        sudo -E insmod $HOME/linux/fs/hayleyfs/hayleyfs.ko; sudo mount -t hayleyfs -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "nova" ]; then 
         sudo -E insmod $HOME/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "winefs" ]; then 
@@ -73,7 +73,7 @@ for i in $(seq 5 $iterations)
     sudo umount /dev/pmem0 
 
     if [ $FS = "squirrelfs" ]; then 
-        sudo rmmod hayleyfs
+        sudo rmmod squirrelfs
     elif [ $FS = "nova" ]; then 
         sudo rmmod nova 
     elif [ $FS = "winefs" ]; then

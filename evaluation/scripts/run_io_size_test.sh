@@ -5,12 +5,12 @@ gcc io_size_test.c -o io_size_test
 echo "io size,file_system,avg write latency(us),avg read latency(us),write throughput(kb/ms),read throughput(kb/ms)" > io_size_output.csv
 
 run_rust() {
-    echo -n "rust,$1," >> io_size_output.csv
-    sudo insmod ~/linux/fs/hayleyfs/hayleyfs.ko 
-    sudo mount -t hayleyfs -o init /dev/pmem0 /mnt/pmem
+    echo -n "squirrelfs,$1," >> io_size_output.csv
+    sudo insmod ~/linux/fs/squirrelfs/squirrelfs.ko 
+    sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem
     sudo numactl --membind 0 ./io_size_test $1 >> io_size_output.csv
     sudo umount /dev/pmem0 
-    sudo rmmod hayleyfs 
+    sudo rmmod squirrelfs 
 }
 
 run_ext4() {

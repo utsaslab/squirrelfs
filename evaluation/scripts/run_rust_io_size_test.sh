@@ -6,11 +6,11 @@ echo "io size,file_system,avg write latency(us),avg read latency(us),write throu
 
 run_rust() {
     echo -n "rust$2,$1," >> io_size_output.csv
-    sudo insmod ~/linux/fs/hayleyfs/hayleyfs.ko 
-    sudo mount -t hayleyfs -o init,write_type=$2 /dev/pmem0 /mnt/pmem
+    sudo insmod ~/linux/fs/squirrelfs/squirrelfs.ko 
+    sudo mount -t squirrelfs -o init,write_type=$2 /dev/pmem0 /mnt/pmem
     sudo numactl --membind 0 ./io_size_test $1 >> io_size_output.csv
     sudo umount /dev/pmem0 
-    sudo rmmod hayleyfs 
+    sudo rmmod squirrelfs 
 }
 
 run_nova() {

@@ -2,7 +2,7 @@
 
 FS=$1
 workload=$2
-output_dir="output-temp"
+output_dir="output-ae"
 iterations=10
 
 op_count=100000000
@@ -18,7 +18,7 @@ fi
 for i in $(seq $iterations)
 do
     if [ $FS = "squirrelfs" ]; then 
-        sudo -E insmod $HOME/linux/fs/hayleyfs/hayleyfs.ko; sudo mount -t hayleyfs -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "nova" ]; then 
         sudo -E insmod $HOME/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "winefs" ]; then 
@@ -43,7 +43,7 @@ do
         sudo umount /dev/pmem0 
 
         if [ $FS = "squirrelfs" ]; then 
-            sudo rmmod hayleyfs
+            sudo rmmod squirrelfs
         elif [ $FS = "nova" ]; then 
             sudo rmmod nova 
         elif [ $FS = "winefs" ]; then

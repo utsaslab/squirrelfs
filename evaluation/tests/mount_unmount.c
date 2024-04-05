@@ -35,5 +35,5 @@ int unmountfs() {
 }
 
 int main(void) {
-    mountfs("hayleyfs");
+    mountfs("squirrelfs");
 }

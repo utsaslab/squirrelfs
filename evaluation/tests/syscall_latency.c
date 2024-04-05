@@ -770,7 +770,7 @@ int main(int argc, void *argv[]) {
     fs_type = mount_type = (char*)argv[1];
 
     if (strcmp(fs_type, "squirrelfs") == 0) {
-        mount_type = "hayleyfs";
+        mount_type = "squirrelfs";
     } else if (strcmp(fs_type, "nova") == 0) {
         mount_type = "NOVA";
     }

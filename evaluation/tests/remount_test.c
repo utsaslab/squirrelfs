@@ -24,7 +24,7 @@ int main(void) {
         return ret;
     }
 
-    ret = mount("/dev/pmem0", "/mnt/pmem", "hayleyfs", 0, "init");
+    ret = mount("/dev/pmem0", "/mnt/pmem", "squirrelfs", 0, "init");
     if (ret < 0) {
         perror("mount");
         return ret;
@@ -52,7 +52,7 @@ int main(void) {
         return ret;
     }
 
-    ret = mount("/dev/pmem0", "/mnt/pmem", "hayleyfs", 0, NULL);
+    ret = mount("/dev/pmem0", "/mnt/pmem", "squirrelfs", 0, NULL);
     if (ret < 0) {
         perror("mount");
         return ret;

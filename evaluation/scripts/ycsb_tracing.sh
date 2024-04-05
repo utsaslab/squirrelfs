@@ -6,7 +6,7 @@ output=ycsb_repro_traces
 
 
 if [ $FS = "squirrelfs" ]; then 
-    insmod /mnt/local_ssd/home/hayley/linux/fs/hayleyfs/hayleyfs.ko; sudo mount -t hayleyfs -o init /dev/pmem0 /mnt/pmem/
+    insmod /mnt/local_ssd/home/hayley/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
 elif [ $FS = "nova" ]; then 
     sudo -E insmod /mnt/local_ssd/home/hayley/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
 elif [ $FS = "winefs" ]; then 
@@ -34,7 +34,7 @@ mkdir -p $output
 # done
 
 # if [ $FS = "squirrelfs" ]; then 
-#     sudo mount -t hayleyfs /dev/pmem0 /mnt/pmem/
+#     sudo mount -t squirrelfs /dev/pmem0 /mnt/pmem/
 # elif [ $FS = "nova" ]; then 
 #     sudo mount -t NOVA /dev/pmem0 /mnt/pmem/
 # elif [ $FS = "winefs" ]; then 
@@ -68,7 +68,7 @@ do
 done
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo rmmod hayleyfs
+    sudo rmmod squirrelfs
 elif [ $FS = "nova" ]; then 
     sudo rmmod nova 
 elif [ $FS = "winefs" ]; then

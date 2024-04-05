@@ -1,13 +1,13 @@
 #!/bin/bash 
 
 FS=$1
-output_dir=output-temp
+output_dir=output-ae
 
 test_iterations=10
 
 # program will load module and mount arckfs itself
 if [ $FS = "squirrelfs" ]; then 
-    sudo -E insmod $HOME/linux/fs/hayleyfs/hayleyfs.ko
+    sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko
 elif [ $FS = "nova" ]; then 
     sudo -E insmod $HOME/linux/fs/nova/nova.ko
 elif [ $FS = "winefs" ]; then 
@@ -53,7 +53,7 @@ fi
 
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo rmmod hayleyfs
+    sudo rmmod squirrelfs
 elif [ $FS = "nova" ]; then 
     sudo rmmod nova 
 elif [ $FS = "winefs" ]; then

@@ -117,11 +117,11 @@ For more information on NDCTL, see the NDCTL user guide here: https://docs.pmem.
 
 ## File system setup
 
-1. Building just the file system: `make LLVM=-14 fs/hayleyfs/hayleyfs.ko`
-2. To load the file system module: `sudo insmod fs/hayleyfs/hayleyfs.ko`
+1. Building just the file system: `make LLVM=-14 fs/squirrelfs/squirrelfs.ko`
+2. To load the file system module: `sudo insmod fs/squirrelfs/squirrelfs.ko`
 3. To mount the file system:
-    1. To initialize following a recompilation, `sudo mount -o init -t hayleyfs /dev/pmem0 /mnt/pmem`
-    2. For all subsequent mounts: `sudo mount -t hayleyfs /dev/pmem0 /mnt/pmem`
+    1. To initialize following a recompilation, `sudo mount -o init -t squirrelfs /dev/pmem0 /mnt/pmem`
+    2. For all subsequent mounts: `sudo mount -t squirrelfs /dev/pmem0 /mnt/pmem`
 5. To unmount the file system: `sudo umount /dev/pmem0`
 6. To remove the file system module: `sudo rmmod hayleyfs`
 

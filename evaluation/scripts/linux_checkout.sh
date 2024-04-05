@@ -3,13 +3,13 @@
 FS=$1
 device=/dev/pmem0
 mount_point=/mnt/pmem
-output_dir=output-25M/$FS/linux_checkout
+output_dir=ae-output/$FS/linux_checkout
 iterations=10
 
 versions=("v3.0" "v4.0" "v5.0" "v6.0")
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo -E insmod $HOME/linux/fs/hayleyfs/hayleyfs.ko; sudo mount -t hayleyfs -o init $device $mount_point
+    sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init $device $mount_point
 elif [ $FS = "nova" ]; then 
     sudo -E insmod $HOME/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init $device $mount_point
 elif [ $FS = "winefs" ]; then 
@@ -42,7 +42,7 @@ cd $test_dir
 sudo umount /dev/pmem0 -f 
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo rmmod hayleyfs
+    sudo rmmod squirrelfs
 elif [ $FS = "nova" ]; then 
     sudo rmmod nova 
 elif [ $FS = "winefs" ]; then
