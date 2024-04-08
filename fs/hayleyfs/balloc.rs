@@ -281,10 +281,16 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                     }
 
                     // add cpu page to vector (vector is mutable)
-                    let cpu_page_vec : &mut Vec<PageNum> = cpu_free_list_map.get_mut(&cpu).unwrap();
-                    
-                    cpu_page_vec.try_push(page.get_page_no())?; 
+                    let cpu_page_vec_option : Option<&mut Vec<PageNum>> = cpu_free_list_map.get_mut(&cpu);
 
+                    if cpu_page_vec_option.is_some() {
+                        let cpu_page_vec : &mut Vec<PageNum> = cpu_page_vec_option.unwrap(); // safe unwrap
+                        cpu_page_vec.try_push(page.get_page_no())?;
+                    } else {
+                        pr_info!("CPU not added to RBTree\n");
+                        return Err(EINVAL); 
+                    }
+                    
                     page_list.move_next();
                 }
                 page = page_list.current(); 
