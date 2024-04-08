@@ -260,26 +260,46 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
     fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
-            let page_list = pages.get_page_list_cursor();
-            // let mut page = page_list.current();
-            // while page.is_some() {
-            //     // janky syntax to deal with the fact that page_list.current() returns an Option
-            //     if let Some(page) = page {
-            //         // TODO: refactor to avoid acquiring lock on every iteration
-            //         allocator.dealloc_page(page.get_page_no())?;
-            //         page_list.move_next();
-            //     } else {
-            //         unreachable!()
-            //     }
-            //     page = page_list.current();
-            // }
-            // Ok(())
-            allocator.dealloc_multiple_page(page_list)?; 
+            let mut page_list = pages.get_page_list_cursor();
+
+            // RBTree to store the free list for every cpu
+            let mut cpu_free_list_map : RBTree<usize, Vec<PageNum>> = RBTree::new(); 
+
+            let mut page = page_list.current(); // head of page list
+            
+            let mut num_pages = 0; 
+
+            // get a list of pages #s for each cpu
+            while page.is_some() {
+                if let Some(page) = page {
+                    pr_info!("Page: {}", page.get_page_no());
+
+                    let cpu : usize = allocator.pageno2cpuid(page.get_page_no())?;
+
+                    if cpu_free_list_map.get(&cpu).is_none() {
+                        cpu_free_list_map.try_insert(cpu, Vec::new())?; 
+                    }
+
+                    // add cpu page to vector (vector is mutable)
+                    let cpu_page_vec : &mut Vec<PageNum> = cpu_free_list_map.get_mut(&cpu).unwrap();
+                    
+                    cpu_page_vec.try_push(page.get_page_no())?; 
+
+                    page_list.move_next();
+                }
+                page = page_list.current(); 
+                num_pages += 1; 
+            }
+
+            pr_info!("Num Pages in List: {}", num_pages); 
+
+            allocator.dealloc_multiple_page(cpu_free_list_map)?;
             Ok(())
+
         } else {
             pr_info!("ERROR: page allocator is uninitialized\n");
             Err(EINVAL)
-        }
+        }            
     }
 
     fn dealloc_dir_page<'a>(&self, page: &DirPageWrapper<'a, Clean, Dealloc>) -> Result<()> {
@@ -294,7 +314,6 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
     fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
-            let page_list = pages.get_page_list_cursor();
             let mut page_list = pages.get_page_list_cursor();
             let mut page = page_list.current();
             while page.is_some() {
@@ -348,39 +367,7 @@ impl PerCpuPageAllocator {
     }
 
 
-    fn dealloc_multiple_page(&self, mut page_list : Cursor<'_, Box<LinkedPage>>) -> Result<()> {
-        // hash map to store free list lock for every cpu
-        let mut cpu_free_list_map : RBTree<usize, Vec<PageNum>> = RBTree::new(); 
-
-
-        let mut page = page_list.current(); // head of page list
-        
-        let mut num_pages = 0; 
-
-        // get a list of pages #s for each cpu
-        while page.is_some() {
-            if let Some(page) = page {
-                pr_info!("Page: {}", page.get_page_no());
-
-                let cpu : usize = ((page.get_page_no() - self.start) / self.pages_per_cpu).try_into()?;
-
-                if matches!(cpu_free_list_map.get(&cpu), None) {
-                    cpu_free_list_map.try_insert(cpu, Vec::new())?; 
-                }
-
-                // add cpu page to vector (vector is mutable)
-                let cpu_page_vec : &mut Vec<PageNum> = cpu_free_list_map.get_mut(&cpu).unwrap();
-                
-                cpu_page_vec.try_push(page.get_page_no())?; 
-
-                page_list.move_next();
-            }
-            page = page_list.current(); 
-            num_pages += 1; 
-        }
-
-        pr_info!("Num Pages in List: {}", num_pages); 
-
+    fn dealloc_multiple_page(&self, cpu_free_list_map : RBTree<usize, Vec<PageNum>>) -> Result<()> {
         // add pages to corresponding free list in ascending cpu # order
         for (cpu, page_nos) in cpu_free_list_map.iter() {
 
@@ -405,9 +392,8 @@ impl PerCpuPageAllocator {
                         );
                         return Err(e);
                     }
-                 };
+                };
 
-                // check that the page was not already present in the tree. CAUSING ERRORS DUE TO TYPE ANNOTATION ISSUES
                 if res.is_some() {
                     pr_info!(
                         "ERROR: page {:?} was already in the allocator at CPU {:?}\n",
@@ -420,9 +406,14 @@ impl PerCpuPageAllocator {
                 pr_info!("Pages Added: {}", free_list.free_pages - old_free_pages); 
             }
         }
-
-        return Ok(()); 
+        Ok(())
     }
+
+    fn pageno2cpuid(&self, page_no : PageNum) -> Result<usize> {
+        let cpu: usize = ((page_no - self.start) / self.pages_per_cpu).try_into()?;
+        Ok(cpu)
+    }
+
 }
 
 // placeholder page descriptor that can represent either a dir or data page descriptor
