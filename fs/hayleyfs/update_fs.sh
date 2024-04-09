@@ -41,17 +41,18 @@ echo
 echo "Removed old file system. Now starting mount of new one."
 echo
 
-step make LLVM=-14 fs/hayleyfs/hayleyfs.ko
-step sudo insmod fs/hayleyfs/hayleyfs.ko
-step sudo mount -o init -t hayleyfs /dev/pmem0 /mnt/pmem
+# step make LLVM=-14 fs/hayleyfs/hayleyfs.ko
+# step sudo insmod fs/hayleyfs/hayleyfs.ko
+# step sudo mount -o init -t hayleyfs /dev/pmem0 /mnt/pmem
 echo
 
 echo "File system module rebuilt, loaded, and mounted successfully."
 
 if [ $t_flag -eq 1 ]; then
   echo "-t was set; Running tests."
-  
-  cd ./fs/hayleyfs/
+
+  cd tests/
+
   pwd
   ./test_fs.sh
 fi
