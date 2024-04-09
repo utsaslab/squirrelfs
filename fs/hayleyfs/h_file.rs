@@ -3,6 +3,7 @@ use crate::defs::*;
 use crate::h_inode::*;
 use crate::typestate::*;
 use crate::volatile::*;
+use crate::namei::*;
 use crate::{end_timing, fence_vec, init_timing, start_timing};
 use core::{ffi, marker::Sync, ptr, sync::atomic::Ordering};
 use kernel::prelude::*;
@@ -12,6 +13,7 @@ use kernel::{
     iomap, mm,
 };
 
+
 pub(crate) struct Adapter {}
 
 impl<T: Sync> file::OpenAdapter<T> for Adapter {
@@ -19,6 +21,21 @@ impl<T: Sync> file::OpenAdapter<T> for Adapter {
         ptr::null_mut()
     }
 }
+
+// FLags for fallocate modes 
+
+#[repr(i32)]
+#[allow(non_camel_case_types)]
+enum FALLOC_FLAG {
+    FALLOC_FL_KEEP_SIZE = 0x01,
+    FALLOC_FL_PUNCH_HOLE = 0x02,
+    // FALLOC_FL_NO_HIDE_STALE = 0x04,
+    FALLOC_FL_COLLAPSE_RANGE = 0x08,
+    FALLOC_FL_ZERO_RANGE = 0x10,
+    FALLOC_FL_INSERT_RANGE = 0x20,
+    // FALLOC_FL_UNSHARE_RANGE = 0x40,
+}   
+
 
 pub(crate) struct FileOps;
 #[vtable]
@@ -85,7 +102,7 @@ impl file::Operations for FileOps {
             Ok((bytes_written, _)) => Ok(bytes_written.try_into()?),
             Err(e) => Err(e),
         }
-    }
+    }   
 
     fn read(
         _data: (),
@@ -128,13 +145,19 @@ impl file::Operations for FileOps {
     }
 
     fn fallocate(
-        _data: (),
-        _file: &file::File,
-        _mode: i32,
-        _offset: i64,
-        _len: i64,
+        data: (),
+        file: &file::File,
+        mode: i32,
+        offset: i64,
+        len: i64,
     ) -> Result<u64> {
-        Err(EINVAL)
+        let inode: &mut fs::INode = unsafe { &mut *file.inode().cast() };
+        
+        let sb = inode.i_sb();
+        let fs_info_raw = unsafe { (*sb).s_fs_info };
+        let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
+
+        return hayleyfs_fallocate(inode, sbi, data, file, mode, offset, len);
     }
 
     fn ioctl(data: (), file: &file::File, cmd: &mut file::IoctlCommand) -> Result<i32> {
@@ -149,6 +172,115 @@ impl file::Operations for FileOps {
         }
         Ok(())
     }
+}
+
+
+fn hayleyfs_fallocate(
+    inode: &mut fs::INode,
+    sbi: &mut SbInfo,
+    data: (),
+    file: &file::File,
+    mode: i32,
+    offset: i64,
+    len: i64,
+) -> Result<u64> {  
+    let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
+    
+    // let pi_info = pi.get_inode_info()?;
+    let initial_size: u64 = pi.get_size() as u64;
+
+    /* 
+     *  Error checks beforehand, sourced from below:
+     *  https://man7.org/linux/man-pages/man2/fallocate.2.html#ERRORS
+     */
+    let falloc_fl_insert_range = mode & FALLOC_FLAG::FALLOC_FL_INSERT_RANGE as i32 == 1;
+    let falloc_fl_collapse_range = mode & FALLOC_FLAG::FALLOC_FL_COLLAPSE_RANGE as i32 == 1;
+    let falloc_fl_keep_size = mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1;
+    let falloc_fl_zero_range = mode & FALLOC_FLAG::FALLOC_FL_ZERO_RANGE as i32 == 1;
+    let falloc_fl_punch_hole = mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 1;
+
+    /* 
+     * EINVAL: offset was less than 0, or len was less than or equal to 0.
+     */
+    if offset < 0 || len <= 0 {
+        return Err(EINVAL);
+    }
+
+    pr_info!("Gets past offset and length check");
+
+    let len_u64: u64 = len.try_into().unwrap();
+    let offset_u64: u64 = offset.try_into().unwrap();
+    let final_file_size : u64 = len_u64 + offset_u64;
+    
+    /* 
+     * EFBIG: offset+len exceeds the maximum file size.
+     */
+    if final_file_size > MAX_FILE_SIZE {
+        return Err(EFBIG);
+    }
+
+    pr_info!("Gets past file size check");
+
+    /* 
+     * EFBIG: mode is FALLOC_FL_INSERT_RANGE, and the current file
+     * size+len exceeds the maximum file size.
+     */
+    if falloc_fl_insert_range && (initial_size + len_u64 > MAX_FILE_SIZE) {
+        pr_info!("Fails the insert_range check.");
+        return Err(EFBIG);
+    }
+
+    /* 
+     * EINTR: A signal was caught during execution; see signal(7).
+     */
+    // TODO: implement me!
+
+    /* 
+     * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE and the range specified
+     * by offset plus len reaches or passes the end of the file.
+     * 
+     * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
+     * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
+     * multiple of the filesystem block size.
+     */
+    if falloc_fl_collapse_range && 
+        offset_u64 + len_u64 >= initial_size ||
+        (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0) // Treat pages as blocks?
+    { 
+        return Err(EINVAL);
+    }
+    
+    /*  
+     * EINVAL: mode is FALLOC_FL_INSERT_RANGE and the range specified by
+     * offset reaches or passes the end of the file.
+     * 
+     * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
+     * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
+     * multiple of the filesystem block size.
+     */
+    if falloc_fl_insert_range && 
+        (offset_u64 >= initial_size) ||
+        (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0)
+    { 
+        return Err(EINVAL);
+    }
+    
+    /*
+    * EINVAL: mode contains one of FALLOC_FL_COLLAPSE_RANGE or
+    * FALLOC_FL_INSERT_RANGE and also other flags; no other
+    * flags are permitted with FALLOC_FL_COLLAPSE_RANGE or
+    * FALLOC_FL_INSERT_RANGE.
+    */
+    if (falloc_fl_insert_range && falloc_fl_collapse_range) ||
+        (
+            (falloc_fl_insert_range ^ falloc_fl_collapse_range) && 
+            falloc_fl_keep_size || falloc_fl_zero_range || falloc_fl_punch_hole
+        )
+    {
+        return Err(EINVAL);
+    }
+
+    Ok(0)
 }
 
 #[allow(dead_code)]
