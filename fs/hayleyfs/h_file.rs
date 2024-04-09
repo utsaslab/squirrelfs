@@ -145,163 +145,19 @@ impl file::Operations for FileOps {
     }
 
     fn fallocate(
-        _data: (),
-        _file: &file::File,
-        _mode: i32,
-        _offset: i64,
-        _len: i64,
+        data: (),
+        file: &file::File,
+        mode: i32,
+        offset: i64,
+        len: i64,
     ) -> Result<u64> {
-        let inode: &mut fs::INode = unsafe { &mut *_file.inode().cast() };
+        let inode: &mut fs::INode = unsafe { &mut *file.inode().cast() };
         
         let sb = inode.i_sb();
         let fs_info_raw = unsafe { (*sb).s_fs_info };
         let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
-          
 
-        let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
-        // let pi_info = pi.get_inode_info()?;
-        let initial_size: u64 = pi.get_size() as u64;
-
-        /* 
-         *  Error checks beforehand, sourced from below:
-         *  https://man7.org/linux/man-pages/man2/fallocate.2.html#ERRORS
-         */
-        let falloc_fl_insert_range = _mode & FALLOC_FLAG::FALLOC_FL_INSERT_RANGE as i32 == 1;
-        let falloc_fl_collapse_range = _mode & FALLOC_FLAG::FALLOC_FL_COLLAPSE_RANGE as i32 == 1;
-        let falloc_fl_keep_size = _mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1;
-        let falloc_fl_zero_range = _mode & FALLOC_FLAG::FALLOC_FL_ZERO_RANGE as i32 == 1;
-        let falloc_fl_punch_hole = _mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 1;
-
-        /* 
-         * EINVAL: offset was less than 0, or len was less than or equal to
-         * 0.
-         */
-        if _offset < 0 || _len <= 0 {
-            return Err(EINVAL);
-        }
-
-        pr_info!("Gets past offset and length check");
-
-        let len_u64: u64 = _len.try_into().unwrap();
-        let offset_u64: u64 = _offset.try_into().unwrap();
-        let final_file_size : u64 = len_u64 + offset_u64;
-        
-        /* 
-         * EFBIG: offset+len exceeds the maximum file size.
-         */
-        if final_file_size > MAX_FILE_SIZE {
-            return Err(EFBIG);
-        }
-
-        pr_info!("Gets past file size check");
-
-        /* 
-         * EFBIG: mode is FALLOC_FL_INSERT_RANGE, and the current file
-         * size+len exceeds the maximum file size.
-         */
-        if falloc_fl_insert_range && (initial_size + len_u64 > MAX_FILE_SIZE) {
-            pr_info!("Fails the insert_range check.");
-            return Err(EFBIG);
-        }
-
-        /* 
-         * EINTR: A signal was caught during execution; see signal(7).
-         */
-        // TODO: implement me!
-
-        /* 
-         * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE and the range specified
-         * by offset plus len reaches or passes the end of the file.
-         * 
-         * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
-         * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
-         * multiple of the filesystem block size.
-         */
-        if falloc_fl_collapse_range && 
-            offset_u64 + len_u64 >= initial_size ||
-            (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0) // Treat pages as blocks?
-        { 
-            return Err(EINVAL);
-        }
-        
-        /*  
-         * EINVAL: mode is FALLOC_FL_INSERT_RANGE and the range specified by
-         * offset reaches or passes the end of the file.
-         * 
-         * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
-         * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
-         * multiple of the filesystem block size.
-         */
-        if falloc_fl_insert_range && 
-            (offset_u64 >= initial_size) ||
-            (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0)
-        { 
-            return Err(EINVAL);
-        }
-        
-        /*
-        * EINVAL: mode contains one of FALLOC_FL_COLLAPSE_RANGE or
-        * FALLOC_FL_INSERT_RANGE and also other flags; no other
-        * flags are permitted with FALLOC_FL_COLLAPSE_RANGE or
-        * FALLOC_FL_INSERT_RANGE.
-        */
-        if (falloc_fl_insert_range && falloc_fl_collapse_range) ||
-            (
-                (falloc_fl_insert_range ^ falloc_fl_collapse_range) && 
-                falloc_fl_keep_size || falloc_fl_zero_range || falloc_fl_punch_hole
-            )
-        {
-            return Err(EINVAL);
-        }
-
-        /*
-         * Implementation below.
-         */
-
-        if _mode == 0 {
-            if final_file_size > initial_size {
-                match hayleyfs_truncate(sbi, pi, final_file_size as i64){
-                    Ok(_) => (),
-                    Err(_e) => {
-                        // do something here to return the right error code
-                        return Err(EINVAL);
-                    }
-                }    
-            } 
-        } 
-        
-        else if _mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1 {
-            // truncate extends the flie size when the size is greater than the current size
-            match hayleyfs_truncate(sbi, pi, final_file_size as i64){
-                Ok(_) => pr_info!("OK"),
-                Err(e) => pr_info!("{:?}", e)
-            }
-            
-            // size will be restored at the end of this function.
-        } 
-        
-        else if _mode & FALLOC_FLAG::FALLOC_FL_COLLAPSE_RANGE as i32 == 1 { //Charan, Lindsey
-            
-
-        }
-
-        else if _mode & FALLOC_FLAG::FALLOC_FL_ZERO_RANGE as i32 == 1 { //Lindsey
-            
-        }
-
-        else if _mode & FALLOC_FLAG::FALLOC_FL_INSERT_RANGE as i32 == 1 { //Kaustubh
- 
-        }
-        else if _mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 1 { //Devon
-
-        }
-
-        if _mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1 {
-            // reset file size to original <-- truncate will add zeroed out pages
-            
-        }
-
-        Ok(0)
+        return hayleyfs_fallocate(inode, sbi, data, file, mode, offset, len);
     }
 
     fn ioctl(data: (), file: &file::File, cmd: &mut file::IoctlCommand) -> Result<i32> {
@@ -317,6 +173,116 @@ impl file::Operations for FileOps {
         Ok(())
     }
 }
+
+fn hayleyfs_fallocate(
+    inode: &mut fs::INode,
+    sbi: &mut SbInfo,
+    data: (),
+    file: &file::File,
+    mode: i32,
+    offset: i64,
+    len: i64,
+) -> Result<u64> {  
+    let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
+    
+    // let pi_info = pi.get_inode_info()?;
+    let initial_size: u64 = pi.get_size() as u64;
+
+    /* 
+     *  Error checks beforehand, sourced from below:
+     *  https://man7.org/linux/man-pages/man2/fallocate.2.html#ERRORS
+     */
+    let falloc_fl_insert_range = mode & FALLOC_FLAG::FALLOC_FL_INSERT_RANGE as i32 == 1;
+    let falloc_fl_collapse_range = mode & FALLOC_FLAG::FALLOC_FL_COLLAPSE_RANGE as i32 == 1;
+    let falloc_fl_keep_size = mode & FALLOC_FLAG::FALLOC_FL_KEEP_SIZE as i32 == 1;
+    let falloc_fl_zero_range = mode & FALLOC_FLAG::FALLOC_FL_ZERO_RANGE as i32 == 1;
+    let falloc_fl_punch_hole = mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 1;
+
+    /* 
+     * EINVAL: offset was less than 0, or len was less than or equal to 0.
+     */
+    if offset < 0 || len <= 0 {
+        return Err(EINVAL);
+    }
+
+    pr_info!("Gets past offset and length check");
+
+    let len_u64: u64 = len.try_into().unwrap();
+    let offset_u64: u64 = offset.try_into().unwrap();
+    let final_file_size : u64 = len_u64 + offset_u64;
+    
+    /* 
+     * EFBIG: offset+len exceeds the maximum file size.
+     */
+    if final_file_size > MAX_FILE_SIZE {
+        return Err(EFBIG);
+    }
+
+    pr_info!("Gets past file size check");
+
+    /* 
+     * EFBIG: mode is FALLOC_FL_INSERT_RANGE, and the current file
+     * size+len exceeds the maximum file size.
+     */
+    if falloc_fl_insert_range && (initial_size + len_u64 > MAX_FILE_SIZE) {
+        pr_info!("Fails the insert_range check.");
+        return Err(EFBIG);
+    }
+
+    /* 
+     * EINTR: A signal was caught during execution; see signal(7).
+     */
+    // TODO: implement me!
+
+    /* 
+     * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE and the range specified
+     * by offset plus len reaches or passes the end of the file.
+     * 
+     * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
+     * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
+     * multiple of the filesystem block size.
+     */
+    if falloc_fl_collapse_range && 
+        offset_u64 + len_u64 >= initial_size ||
+        (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0) // Treat pages as blocks?
+    { 
+        return Err(EINVAL);
+    }
+    
+    /*  
+     * EINVAL: mode is FALLOC_FL_INSERT_RANGE and the range specified by
+     * offset reaches or passes the end of the file.
+     * 
+     * EINVAL: mode is FALLOC_FL_COLLAPSE_RANGE or
+     * FALLOC_FL_INSERT_RANGE, but either offset or len is not a
+     * multiple of the filesystem block size.
+     */
+    if falloc_fl_insert_range && 
+        (offset_u64 >= initial_size) ||
+        (offset_u64 % HAYLEYFS_PAGESIZE != 0 || len_u64 % HAYLEYFS_PAGESIZE != 0)
+    { 
+        return Err(EINVAL);
+    }
+    
+    /*
+    * EINVAL: mode contains one of FALLOC_FL_COLLAPSE_RANGE or
+    * FALLOC_FL_INSERT_RANGE and also other flags; no other
+    * flags are permitted with FALLOC_FL_COLLAPSE_RANGE or
+    * FALLOC_FL_INSERT_RANGE.
+    */
+    if (falloc_fl_insert_range && falloc_fl_collapse_range) ||
+        (
+            (falloc_fl_insert_range ^ falloc_fl_collapse_range) && 
+            falloc_fl_keep_size || falloc_fl_zero_range || falloc_fl_punch_hole
+        )
+    {
+        return Err(EINVAL);
+    }
+
+
+    Ok(0)
+}
+
 
 #[allow(dead_code)]
 fn hayleyfs_write<'a>(
@@ -419,13 +385,13 @@ fn single_page_write<'a>(
         end_timing!(WriteAllocPage, write_alloc_page);
         page
     };
-    let offset_in_page = offset - page_offset;
-    let bytes_after_offset = HAYLEYFS_PAGESIZE - offset_in_page;
+    let offset_in_page = offset - pageoffset;
+    let bytes_afteroffset = HAYLEYFS_PAGESIZE - offset_in_page;
     // either write the rest of the count or write to the end of the page
-    let to_write = if count < bytes_after_offset {
+    let to_write = if count < bytes_afteroffset {
         count
     } else {
-        bytes_after_offset
+        bytes_afteroffset
     };
     init_timing!(write_to_page);
     start_timing!(write_to_page);
@@ -456,12 +422,12 @@ fn runtime_checked_write<'a>(
     // page or allocating
     let mut bytes = 0;
     let mut pages = Vec::new();
-    let mut loop_offset = offset;
+    let mut loopoffset = offset;
     while bytes < len {
         // get offset of the next page in the file
-        let page_offset = page_offset(loop_offset)?;
+        let pageoffset = pageoffset(loopoffset)?;
         // determine if the file actually has the page
-        let result = pi_info.find(page_offset);
+        let result = pi_info.find(pageoffset);
         match result {
             Some(page_no) => {
                 let page = DataPageWrapper::from_page_no(sbi, page_no)?;
@@ -471,7 +437,7 @@ fn runtime_checked_write<'a>(
                 // we need to allocate a page
                 // TODO: error handling
                 // TODO: one fence for all newly-allocated pages
-                let new_page = DataPageWrapper::alloc_data_page(sbi, page_offset)?
+                let new_page = DataPageWrapper::alloc_data_page(sbi, pageoffset)?
                     .flush()
                     .fence();
                 let new_page = new_page.set_data_page_backpointer(pi).flush().fence();
@@ -480,14 +446,14 @@ fn runtime_checked_write<'a>(
             }
         }
         bytes += HAYLEYFS_PAGESIZE;
-        loop_offset = page_offset + HAYLEYFS_PAGESIZE;
+        loopoffset = pageoffset + HAYLEYFS_PAGESIZE;
     }
 
     // write to the pages
     let mut written_pages = Vec::new();
     // get offset into the first page to write to
-    let mut page_offset = page_offset(offset)?;
-    let mut offset_in_page = offset - page_offset;
+    let mut pageoffset = pageoffset(offset)?;
+    let mut offset_in_page = offset - pageoffset;
 
     let mut bytes_written = 0;
     let write_size = len;
@@ -502,7 +468,7 @@ fn runtime_checked_write<'a>(
         };
         let (written, page) = page.write_to_page(sbi, reader, offset_in_page, bytes_to_write)?;
         bytes_written += written;
-        page_offset += HAYLEYFS_PAGESIZE;
+        pageoffset += HAYLEYFS_PAGESIZE;
         len -= bytes_to_write;
         offset_in_page = 0;
         written_pages.try_push(page)?;
@@ -527,21 +493,21 @@ fn iterator_write<'a>(
 ) -> Result<(DataPageListWrapper<Clean, Written>, u64)> {
     // TODO: if we have to allocate some pages we don't write to, they should
     // probably get zeroed out
-    let (alloc_count, alloc_offset) = if offset > pi.get_size() {
+    let (alloc_count, allocoffset) = if offset > pi.get_size() {
         (count + offset - pi.get_size(), pi.get_size())
     } else {
         (count, offset)
     };
-    let page_list = DataPageListWrapper::get_data_page_list(pi_info, alloc_count, alloc_offset)?;
+    let page_list = DataPageListWrapper::get_data_page_list(pi_info, alloc_count, allocoffset)?;
     let page_list = match page_list {
         Ok(page_list) => page_list, // all pages are already allocated
         Err(page_list) => {
-            let pages_to_write = get_num_pages_in_region(alloc_count, alloc_offset);
+            let pages_to_write = get_num_pages_in_region(alloc_count, allocoffset);
             let pages_left = pages_to_write - page_list.len();
-            let allocation_offset =
-                page_offset(alloc_offset)? + page_list.len() * HAYLEYFS_PAGESIZE;
+            let allocationoffset =
+                pageoffset(allocoffset)? + page_list.len() * HAYLEYFS_PAGESIZE;
             let page_list = page_list
-                .allocate_pages(sbi, &pi_info, pages_left.try_into()?, allocation_offset)?
+                .allocate_pages(sbi, &pi_info, pages_left.try_into()?, allocationoffset)?
                 .fence();
             let page_list = page_list.set_backpointers(sbi, pi.get_ino())?.fence();
             page_list
@@ -576,21 +542,21 @@ fn hayleyfs_read(
     let mut bytes_left_in_file = size - offset; // # of bytes that can be read
     let mut bytes_read = 0;
     while count > 0 {
-        let page_offset = page_offset(offset)?;
+        let pageoffset = pageoffset(offset)?;
 
-        let offset_in_page = offset - page_offset;
+        let offset_in_page = offset - pageoffset;
         let bytes_left_in_page = HAYLEYFS_PAGESIZE - offset_in_page;
-        let bytes_after_offset = if bytes_left_in_file <= bytes_left_in_page {
+        let bytes_afteroffset = if bytes_left_in_file <= bytes_left_in_page {
             bytes_left_in_file
         } else {
             bytes_left_in_page
         };
 
         // either read the rest of the count or write to the end of the page
-        let to_read = if count < bytes_after_offset {
+        let to_read = if count < bytes_afteroffset {
             count
         } else {
-            bytes_after_offset
+            bytes_afteroffset
         };
         if to_read == 0 {
             break;
@@ -598,7 +564,7 @@ fn hayleyfs_read(
         init_timing!(page_lookup);
         start_timing!(page_lookup);
         // if the page exists, read from it. Otherwise, return zeroes
-        let result = pi_info.find(page_offset.try_into()?);
+        let result = pi_info.find(pageoffset.try_into()?);
         end_timing!(LookupDataPage, page_lookup);
         if let Some(page_no) = result {
             let data_page = DataPageWrapper::from_page_no(sbi, page_no)?;
@@ -735,13 +701,13 @@ impl iomap::Operations for IomapOps {
 fn hayleyfs_iomap_get_blocks(
     sbi: &SbInfo,
     inode: &fs::INode,
-    page_offset: i64,
+    pageoffset: i64,
     length: i64,
     create: bool,
 ) -> Result<(u64, *mut ffi::c_void)> {
     let pagesize_i64: i64 = HAYLEYFS_PAGESIZE.try_into()?;
-    if page_offset % pagesize_i64 != 0 {
-        pr_info!("ERROR: page offset {:?} is not page aligned\n", page_offset);
+    if pageoffset % pagesize_i64 != 0 {
+        pr_info!("ERROR: page offset {:?} is not page aligned\n", pageoffset);
         return Err(EINVAL);
     }
     // get the data page list for the requested range
@@ -751,44 +717,44 @@ fn hayleyfs_iomap_get_blocks(
     let page_list = DataPageListWrapper::get_data_page_list(
         pi_info,
         length.try_into()?,
-        page_offset.try_into()?,
+        pageoffset.try_into()?,
     )?;
     match page_list {
         Ok(page_list) => {
             // in this case, we found the number of pages we want. don't need to allocate
             // even if create == true, just return the number of pages and the start
-            get_num_pages_and_offset(page_list)
+            get_num_pages_andoffset(page_list)
         }
         Err(page_list) => {
             // in this case, we did not get the requested number of pages
             // if create == false, just return the existing contiguous section
             if create == false {
-                get_num_pages_and_offset(page_list)
+                get_num_pages_andoffset(page_list)
             } else {
                 // otherwise, allocate the rest of the pages, set their backpointers,
                 // then see how many contiguous pages we can obtain
                 let num_pages =
-                    get_num_pages_in_region(length.try_into()?, page_offset.try_into()?);
+                    get_num_pages_in_region(length.try_into()?, pageoffset.try_into()?);
                 let pages_left = num_pages - page_list.len();
                 let len_i64: i64 = page_list.len().try_into()?;
-                let allocation_offset = page_offset + len_i64 * pagesize_i64;
+                let allocationoffset = pageoffset + len_i64 * pagesize_i64;
                 let page_list = page_list
                     .allocate_pages(
                         sbi,
                         &pi_info,
                         pages_left.try_into()?,
-                        allocation_offset.try_into()?,
+                        allocationoffset.try_into()?,
                     )?
                     .fence();
                 let page_list = page_list.set_backpointers(sbi, pi.get_ino())?.fence();
                 // TODO: increase page size? Not sure exactly when that should happen
-                get_num_pages_and_offset(page_list)
+                get_num_pages_andoffset(page_list)
             }
         }
     }
 }
 
-fn get_num_pages_and_offset<S: PagesExist>(
+fn get_num_pages_andoffset<S: PagesExist>(
     page_list: DataPageListWrapper<Clean, S>,
 ) -> Result<(u64, *mut ffi::c_void)> {
     let num_phys_contiguous_pages = page_list.num_contiguous_pages_from_start();

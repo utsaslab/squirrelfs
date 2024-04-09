@@ -182,7 +182,8 @@ TEST-5
 
 << TEST-6
 
-This test verifies that fallocate fails with EINVAL when combining FALLOC_FL_COLLAPSE_RANGE or FALLOC_FL_INSERT_RANGE with other incompatible flags.
+This test verifies that fallocate fails with EINVAL when combining FALLOC_FL_COLLAPSE_RANGE
+or FALLOC_FL_INSERT_RANGE with other incompatible flags.
 
 TEST-6
 {

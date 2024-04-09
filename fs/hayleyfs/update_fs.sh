@@ -1,6 +1,6 @@
 #!/bin/bash
-source /home/rustfs/.bashrc
-source /home/rustfs/.profile
+# source /home/rustfs/.bashrc
+# source /home/rustfs/.profile
 
 t_flag=0
 
