@@ -267,12 +267,10 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
             let mut page = page_list.current(); // head of page list
             
-            let mut num_pages = 0; 
-
             // get a list of pages #s for each cpu
             while page.is_some() {
                 if let Some(page) = page {
-                    pr_info!("Page: {}", page.get_page_no());
+                    // pr_info!("Page: {}", page.get_page_no());
 
                     let cpu : usize = allocator.pageno2cpuid(page.get_page_no())?;
 
@@ -294,10 +292,9 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                     page_list.move_next();
                 }
                 page = page_list.current(); 
-                num_pages += 1; 
             }
 
-            pr_info!("Num Pages in List: {}", num_pages); 
+            // pr_info!("Num Pages in List: {}", num_pages); 
 
             allocator.dealloc_multiple_page(cpu_free_list_map)?;
             Ok(())
@@ -379,7 +376,6 @@ impl PerCpuPageAllocator {
 
             let free_list = Arc::clone(&self.free_lists[*cpu]);
             let mut free_list = free_list.lock();
-            let old_free_pages = free_list.free_pages; 
 
             for page_no in page_nos.iter() {
 
@@ -407,9 +403,7 @@ impl PerCpuPageAllocator {
                         cpu
                     );
                     return Err(EINVAL); 
-                }
-                pr_info!("Cpu: {} Freed: {}", cpu, page_no);
-                pr_info!("Pages Added: {}", free_list.free_pages - old_free_pages); 
+                } 
             }
         }
         Ok(())
