@@ -7,7 +7,6 @@ syscall_latency_arckfs
 
 autom4te.cache/
 .deps/
-Makefile
 INSTALL
 Makefile.in
 aclocal.m4
@@ -47,14 +46,14 @@ vars.o
 aslr.o
 fbtime.o
 
-cvars/*.o
-cvars/*.lo
-cvars/*.la
-cvars/.libs
-cvars/mtwist/.dirstamp
-cvars/mtwist/.libs
-cvars/mtwist/*.o
-cvars/mtwist/*.lo
+filebench/cvars/*.o
+filebench/cvars/*.lo
+filebench/cvars/*.la
+filebench/cvars/.libs
+filebench/cvars/mtwist/.dirstamp
+filebench/cvars/mtwist/.libs
+filebench/cvars/mtwist/*.o
+filebench/cvars/mtwist/*.lo
 
 m4/
 missing

@@ -113,6 +113,7 @@ pub(crate) enum WriteType {
 #[derive(Default, Debug)]
 pub(crate) struct SquirrelFsParams {
     pub(crate) init: Option<bool>,
+    pub(crate) force_recovery: Option<bool>,
     pub(crate) write_type: Option<WriteType>,
 }
 

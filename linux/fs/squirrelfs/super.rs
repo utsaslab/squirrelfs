@@ -42,7 +42,9 @@ impl fs::Context<Self> for SquirrelFs {
 
     kernel::define_fs_params! {Box<SbInfo>,
         {flag, "init", |s, v| {s.mount_opts.init = Some(v); Ok(())}},
+        {flag, "force_recovery", |s, v| {s.mount_opts.force_recovery = Some(v); Ok(())}},
         // TODO: let the user pass in a string
+        // TODO: remove these options
         {u64, "write_type", |s, v| {
             if v == 0 {
                 pr_info!("using single page writes\n");
@@ -368,7 +370,8 @@ unsafe fn init_fs<T: fs::Type + ?Sized>(
         }
 
         let pi = SquirrelFsInode::init_root_inode(sbi, inode)?;
-        let super_block = SquirrelFsSuperBlock::init_super_block(sbi.get_virt_addr(), sbi.get_size());
+        let super_block =
+            SquirrelFsSuperBlock::init_super_block(sbi.get_virt_addr(), sbi.get_size());
 
         squirrelfs_flush_buffer(pi, INODE_SIZE.try_into()?, false);
         squirrelfs_flush_buffer(super_block, SB_SIZE.try_into()?, true);
@@ -511,8 +514,13 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         );
         return Err(EINVAL);
     }
-    let recovering = !sb.get_clean_unmount();
-    // let recovering = true;
+    let clean_unmount = sb.get_clean_unmount();
+    let force_recovery = if let Some(true) = sbi.mount_opts.force_recovery {
+        true
+    } else {
+        false
+    };
+    let recovering = force_recovery || !clean_unmount;
     pr_info!("Recovering: {:?}\n", recovering);
 
     // 2. scan the inode table to determine which inodes are allocated

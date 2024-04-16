@@ -3,17 +3,17 @@
 FS=$1
 device=/dev/pmem0
 mount_point=/mnt/pmem
-output_dir=ae-output/$FS/linux_checkout
+output_dir=output-ae/$FS/linux_checkout
 iterations=10
 
 versions=("v3.0" "v4.0" "v5.0" "v6.0")
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init $device $mount_point
+    sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init $device $mount_point
 elif [ $FS = "nova" ]; then 
-    sudo -E insmod $HOME/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init $device $mount_point
+    sudo -E insmod ../linux/fs/nova/nova.ko; sudo mount -t NOVA -o init $device $mount_point
 elif [ $FS = "winefs" ]; then 
-    sudo -E insmod $HOME/linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init $device $mount_point
+    sudo -E insmod ../linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init $device $mount_point
 elif [ $FS = "ext4" ]; then 
     yes | sudo mkfs.ext4 $device 
     sudo -E mount -t ext4 -o dax $device $mount_point
@@ -23,18 +23,21 @@ mkdir -p $output_dir
 sudo chown -R $USER:$USER $output_dir
 sudo mkdir -p $mount_point/linux 
 sudo chown $USER:$USER $mount_point/linux
-# check out the oldest tagged version
-time git clone git@github.com:torvalds/linux.git $mount_point/linux --branch="v2.6.11"
+
+time GIT_SSH_COMMAND='ssh -i ${HOME}/.ssh/id_ed25519 -o IdentitiesOnly=yes' git clone git@github.com:torvalds/linux.git $mount_point/linux #--branch="v2.6.11"
+# time git clone git@github.com:torvalds/linux.git $mount_point/linux --branch="v2.6.11"
 
 test_dir=$(pwd)
 cd $mount_point/linux
+# check out the oldest tagged version
+GIT_SSH_COMMAND='ssh -i ${HOME}/.ssh/id_ed25519 -o IdentitiesOnly=yes' git checkout v2.6.12
 
 for i in $(seq $iterations)
 do 
     for tag in ${versions[@]} 
     do 
         echo -n "$tag," >> $test_dir/$output_dir/Run$i
-        TIMEFORMAT="%2R"; { time git checkout $tag; } 2>> $test_dir/$output_dir/Run$i 
+        TIMEFORMAT="%2R"; { time GIT_SSH_COMMAND='ssh -i ${HOME}/.ssh/id_ed25519 -o IdentitiesOnly=yes' git checkout $tag; } 2>> $test_dir/$output_dir/Run$i 
     done
 done 
 

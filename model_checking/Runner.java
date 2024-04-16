@@ -128,11 +128,12 @@ public final class Runner {
 
         ArrayList<Command> commands = new ArrayList<Command>(model.getAllCommands());
 
-        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        String str_timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(timestamp);
-        String output_file = "output/runner_" + str_timestamp + ".out";
+        // Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+        // String str_timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(timestamp);
+        String output_file = "output/model_sim_results";
         File f = new File(output_file);
         try {
+            System.out.println("creating file " + output_file);
             // f.delete();
             f.createNewFile();
         } catch (IOException e) {
@@ -300,7 +301,16 @@ class Worker implements Runnable {
                 command = commands_to_run.remove(0);
             }
             current_command_label = command.label;
-            run_test(command);
+            try {
+                run_test(command);
+            } catch (Exception e) { 
+                // if the function fails due to threading bug in Kodkod, put the command 
+                // back on the queue to try again later.
+                System.out.println("PUTTING COMMAND BACK ON QUEUE");
+                synchronized (commands_to_run) {
+                    commands_to_run.add(command);
+                }
+            }
         }
     }
 
@@ -308,11 +318,11 @@ class Worker implements Runnable {
         // output_file) {
         System.out.println("Running " + command.label + "...");
         long startTime = System.nanoTime();
-
         if (options.solver == A4Options.SatSolver.CNF) {
             A4Solution ans = TranslateAlloyToKodkod.execute_command(rep, model.getAllReachableSigs(), command, options);
             return;
         }
+        
 
         A4Solution ans = TranslateAlloyToKodkod.execute_command(rep, model.getAllReachableSigs(), command, options);
 

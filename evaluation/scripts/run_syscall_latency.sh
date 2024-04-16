@@ -7,11 +7,11 @@ test_iterations=10
 
 # program will load module and mount arckfs itself
 if [ $FS = "squirrelfs" ]; then 
-    sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko
+    sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko
 elif [ $FS = "nova" ]; then 
-    sudo -E insmod $HOME/linux/fs/nova/nova.ko
+    sudo -E insmod ../linux/fs/nova/nova.ko
 elif [ $FS = "winefs" ]; then 
-    sudo -E insmod $HOME/linux/fs/winefs/winefs.ko
+    sudo -E insmod ../linux/fs/winefs/winefs.ko
 fi 
 
 if [ $FS = "arckfs" ]; then 

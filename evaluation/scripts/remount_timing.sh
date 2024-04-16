@@ -10,7 +10,8 @@ fill_device_file_size=$((1024*32))
 filename=output-ae/${FS}/remount_timing/$TEST
 mkdir -p $filename
 
-time_mount() {
+time_mount() { 
+    # measure regular mount timing
     for i in $(seq $iterations)
     do
         if [ $FS = "squirrelfs" ]; then 
@@ -24,6 +25,16 @@ time_mount() {
         fi 
         sudo umount /dev/pmem0
     done
+    # measure squirrelfs recovery mount timing 
+    if [ $FS = "squirrelfs" ]; then 
+        filename=${filename}_recovery
+        mkdir -p $filename
+        for i in $(seq $iterations)
+        do
+            { time mount -t squirrelfs -o force_recovery /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            sudo umount /dev/pmem0
+        done
+    fi
 }
 
 init_mount() {
@@ -190,11 +201,11 @@ fill_device() {
 }
 
 if [ $FS = "squirrelfs" ]; then 
-    sudo -E insmod $HOME/squirrelfs/fs/squirrelfs/squirrelfs.ko
+    sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko
 elif [ $FS = "nova" ]; then 
-    sudo -E insmod $HOME/squirrelfs/fs/nova/nova.ko
+    sudo -E insmod ../linux/fs/nova/nova.ko
 elif [ $FS = "winefs" ]; then 
-    sudo -E insmod $HOME/squirrelfs/fs/winefs/winefs.ko
+    sudo -E insmod ../linux/fs/winefs/winefs.ko
 fi 
 
 # set up files to scan on remount

@@ -10,11 +10,11 @@ echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 for i in $(seq $iterations)
 do
     if [ $FS = "squirrelfs" ]; then 
-        sudo -E insmod $HOME/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "nova" ]; then 
-        sudo -E insmod $HOME/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod ../linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "winefs" ]; then 
-        sudo -E insmod $HOME/linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod ../linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init /dev/pmem0 /mnt/pmem/
     elif [ $FS = "ext4" ]; then 
         yes | sudo mkfs.ext4 /dev/pmem0 
         sudo -E mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/
