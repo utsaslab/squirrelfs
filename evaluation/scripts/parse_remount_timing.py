@@ -80,7 +80,8 @@ def main():
     print('number of runs = ' + str(num_runs) + ', start run id = ' + str(start_run_id))
     print('result directory = ' + result_dir)
 
-    experiments = ["init", "empty", "fill_files", "half_files", "fill_device"]
+    # experiments = ["init", "empty", "fill_files", "half_files", "fill_device"]
+    experiments = ["init", "empty", "fill_device"]
 
     csv_out_file = open(output_csv_file, mode='w')
     csv_writer = csv.writer(csv_out_file, delimiter=',')

@@ -25,7 +25,7 @@ run_nova() {
 run_ext4() {
     echo -n "ext4$2,$1," >> io_size_output.csv
     echo "yes" | sudo mkfs.ext4 /dev/pmem0 
-    sudo numactl --membind 0 mount -t ext4 -o dax,data=$2 /dev/pmem0 /mnt/pmem/ 
+    sudo numactl --membind 0 mount -t ext4 -o dax,data=$2 /dev/pmem0 $MOUNT_POINT/ 
     sudo ./io_size_test $1 >> io_size_output.csv
     sudo umount /dev/pmem0 
 }

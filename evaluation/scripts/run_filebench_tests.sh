@@ -1,21 +1,31 @@
 #!/bin/bash
 
-sudo -E ./scripts/run_filebench.sh fileserver squirrelfs
-sudo -E ./scripts/run_filebench.sh fileserver nova
-sudo -E ./scripts/run_filebench.sh fileserver winefs
-sudo -E ./scripts/run_filebench.sh fileserver ext4
+MOUNT_POINT=$1
+OUTPUT_DIR=$2
+PM_DEVICE=$3
+if [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+    echo "Usage: run_filebench_tests.sh mountpoint output_dir pm_device"
+    exit 1
+fi
+sudo mkdir -p $MOUNT_POINT
+sudo mkdir -p $OUTPUT_DIR
 
-sudo -E ./scripts/run_filebench.sh varmail squirrelfs
-sudo -E ./scripts/run_filebench.sh varmail nova
-sudo -E ./scripts/run_filebench.sh varmail winefs
-sudo -E ./scripts/run_filebench.sh varmail ext4
+sudo -E ./scripts/run_filebench.sh squirrelfs $MOUNT_POINT fileserver $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh nova $MOUNT_POINT fileserver $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh winefs $MOUNT_POINT fileserver $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh ext4 $MOUNT_POINT fileserver $OUTPUT_DIR $PM_DEVICE
 
-sudo -E ./scripts/run_filebench.sh webserver squirrelfs
-sudo -E ./scripts/run_filebench.sh webserver nova
-sudo -E ./scripts/run_filebench.sh webserver winefs
-sudo -E ./scripts/run_filebench.sh webserver ext4
+sudo -E ./scripts/run_filebench.sh squirrelfs $MOUNT_POINT varmail $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh nova $MOUNT_POINT varmail $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh winefs $MOUNT_POINT varmail $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh ext4 $MOUNT_POINT varmail $OUTPUT_DIR $PM_DEVICE
 
-sudo -E ./scripts/run_filebench.sh webproxy squirrelfs
-sudo -E ./scripts/run_filebench.sh webproxy nova
-sudo -E ./scripts/run_filebench.sh webproxy winefs
-sudo -E ./scripts/run_filebench.sh webproxy ext4
+sudo -E ./scripts/run_filebench.sh squirrelfs $MOUNT_POINT webserver $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh nova $MOUNT_POINT webserver $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh winefs $MOUNT_POINT webserver $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh ext4 $MOUNT_POINT webserver $OUTPUT_DIR $PM_DEVICE
+
+sudo -E ./scripts/run_filebench.sh squirrelfs $MOUNT_POINT webproxy $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh nova $MOUNT_POINT webproxy $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh winefs $MOUNT_POINT webproxy $OUTPUT_DIR $PM_DEVICE
+sudo -E ./scripts/run_filebench.sh ext4 $MOUNT_POINT webproxy $OUTPUT_DIR $PM_DEVICE

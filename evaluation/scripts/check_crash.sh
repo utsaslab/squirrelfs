@@ -1,5 +1,11 @@
 #!/bin/bash
 
+MOUNT_POINT=$1
+if [ -z $MOUNT_POINT ]; then 
+    echo "Usage: check_crash.sh mountpoint"
+    exit 1
+fi
+
 read_dir () {
     ls_output=$(ls $1)
     for f in $ls_output
@@ -13,11 +19,11 @@ read_dir () {
         fi 
     done
 
-    if [ $1 = "/mnt/pmem/src_parent" ]
+    if [ $1 = "$MOUNT_POINT/src_parent" ]
     then 
         for f in $ls_output
         do 
-            if [ -d /mnt/pmem/dst_parent/$f ]
+            if [ -d $MOUNT_POINT/dst_parent/$f ]
             then 
                 echo "error: $f is in dst and src"
             fi
@@ -33,7 +39,7 @@ read_dir () {
 # sudo dd if=../snapshot of=/dev/pmem0
 
 sudo -E insmod $HOME/linux/fs/hayleyfs/hayleyfs.ko
-sudo mount -t hayleyfs /dev/pmem0 /mnt/pmem/ > /dev/null
+sudo mount -t hayleyfs /dev/pmem0 $MOUNT_POINT/ > /dev/null
 
 stat /mnt/pmem
 read_dir /mnt/pmem

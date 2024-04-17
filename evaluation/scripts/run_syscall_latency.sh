@@ -1,7 +1,17 @@
 #!/bin/bash 
 
 FS=$1
-output_dir=output-ae
+MOUNT_POINT=$2
+OUTPUT_DIR=$3
+PM_DEVICE=$4
+output_dir=$OUTPUT_DIR
+
+if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+    echo "Usage: run_syscall_latency.sh fs mountpoint output_dir pm_device"
+    exit 1
+fi
+sudo mkdir -p $MOUNT_POINT
+sudo mkdir -p $OUTPUT_DIR
 
 test_iterations=10
 
@@ -48,7 +58,7 @@ if [ $FS = "arckfs" ]; then
     done
 else 
     sudo ndctl create-namespace -f -e namespace0.0 --mode=fsdax
-    tests/syscall_latency $FS
+    tests/syscall_latency $FS $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 fi
 
 

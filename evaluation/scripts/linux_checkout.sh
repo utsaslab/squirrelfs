@@ -1,9 +1,17 @@
 #!/bin/bash
 
 FS=$1
-device=/dev/pmem0
-mount_point=/mnt/pmem
-output_dir=output-ae/$FS/linux_checkout
+mount_point=$2
+output_dir=$3
+pm_device=$4
+
+if [ -z $FS] | [ -z $mount_point ] | [ -z $output_dir ] | [ -z $pm_device ]; then 
+    echo "Usage: linux_checkout.sh fs mountpoint output_dir pm_device"
+    exit 1
+fi
+sudo mkdir -p $MOUNT_POINT
+sudo mkdir -p $OUTPUT_DIR
+
 iterations=10
 
 versions=("v3.0" "v4.0" "v5.0" "v6.0")
@@ -42,7 +50,7 @@ do
 done 
 
 cd $test_dir
-sudo umount /dev/pmem0 -f 
+sudo umount $pm_device -f 
 
 if [ $FS = "squirrelfs" ]; then 
     sudo rmmod squirrelfs

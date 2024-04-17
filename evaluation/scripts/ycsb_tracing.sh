@@ -6,14 +6,14 @@ output=ycsb_repro_traces
 
 
 if [ $FS = "squirrelfs" ]; then 
-    insmod /mnt/local_ssd/home/hayley/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
+    insmod /mnt/local_ssd/home/hayley/linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 $MOUNT_POINT/
 elif [ $FS = "nova" ]; then 
-    sudo -E insmod /mnt/local_ssd/home/hayley/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
+    sudo -E insmod /mnt/local_ssd/home/hayley/linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 $MOUNT_POINT/
 elif [ $FS = "winefs" ]; then 
-    sudo -E insmod /mnt/local_ssd/home/hayley/linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init /dev/pmem0 /mnt/pmem/
+    sudo -E insmod /mnt/local_ssd/home/hayley/linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init /dev/pmem0 $MOUNT_POINT/
 elif [ $FS = "ext4" ]; then 
     yes | sudo mkfs.ext4 /dev/pmem0 
-    sudo -E mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/
+    sudo -E mount -t ext4 -o dax /dev/pmem0 $MOUNT_POINT/
 fi 
 
 gcc tests/ycsb_loada_repro.c -o ycsb_loada_repro -g
@@ -34,13 +34,13 @@ mkdir -p $output
 # done
 
 # if [ $FS = "squirrelfs" ]; then 
-#     sudo mount -t squirrelfs /dev/pmem0 /mnt/pmem/
+#     sudo mount -t squirrelfs /dev/pmem0 $MOUNT_POINT/
 # elif [ $FS = "nova" ]; then 
-#     sudo mount -t NOVA /dev/pmem0 /mnt/pmem/
+#     sudo mount -t NOVA /dev/pmem0 $MOUNT_POINT/
 # elif [ $FS = "winefs" ]; then 
-#     sudo mount -t winefs /dev/pmem0 /mnt/pmem/
+#     sudo mount -t winefs /dev/pmem0 $MOUNT_POINT/
 # elif [ $FS = "ext4" ]; then 
-#     sudo -E mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/
+#     sudo -E mount -t ext4 -o dax /dev/pmem0 $MOUNT_POINT/
 # fi 
 
 # for i in $(seq $(($PROCESSES-1)))

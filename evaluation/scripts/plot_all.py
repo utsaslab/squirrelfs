@@ -7,8 +7,7 @@ import numpy as np
 import sys
 
 file_sys = ["Ext4-DAX", "NOVA", "WineFS", "SquirrelFS"]
-file_sys_with_arckfs = ["Ext4-DAX", "NOVA", "WineFS", "ArckFS", "SquirrelFS"]
-# TODO: put rename back in once you have figured out why it isn't working on arckfs
+# file_sys_with_arckfs = ["Ext4-DAX", "NOVA", "WineFS", "ArckFS", "SquirrelFS"]
 syscall_labels = ["1K\nappend", "16K\nappend", "1K\nread", "16K\nread", "creat", "mkdir", "rename", "unlink"]
 rocksdb_labels = ["Load A", "Run A", "Run B", "Run C", "Run D", "Load E", "Run E", "Run F"]
 syscalls = ["append_1k", "append_16k", "read_1k", "read_16k", "creat", "mkdir", "rename", "unlink"]
@@ -126,10 +125,10 @@ def plot_data(output_file, syscall_latency_data, syscall_mins, syscall_maxes, fi
     fig, axs = plt.subplots(2,2,gridspec_kw={'width_ratios': [1.75, 1]})
 
 
-    plot_with_error(syscall_latency_data, syscall_mins, syscall_maxes, None, axs[0,0], syscalls, file_sys_with_arckfs)
+    plot_with_error(syscall_latency_data, syscall_mins, syscall_maxes, None, axs[0,0], syscalls, file_sys)
     plot_with_error(filebench_data, filebench_mins, filebench_maxes, filebench_ext4_raw, axs[0,1], filebench_workloads, file_sys)
     plot_with_error(rocksdb_data, rocksdb_mins, rocksdb_maxes, rocksdb_ext4_raw, axs[1,0], rocksdb_workloads, file_sys)
-    plot_with_error(lmdb_data, lmdb_mins, lmdb_maxes, lmdb_ext4_raw, axs[1,1], lmdb_workloads, file_sys_with_arckfs)
+    plot_with_error(lmdb_data, lmdb_mins, lmdb_maxes, lmdb_ext4_raw, axs[1,1], lmdb_workloads, file_sys)
 
     axs[0,0].set_ylabel("Latency (us)")
     axs[0,0].set_xlabel("(a) System call latency")
@@ -178,9 +177,9 @@ def main():
     lmdb_results_file = sys.argv[4]
     output_file = sys.argv[5]
 
-    syscall_ext4_raw, syscall_latency_data, syscall_mins, syscall_maxes = read_data_with_error(syscall_results_file, syscalls, False, False, file_sys_with_arckfs)
-    filebench_ext4_raw, filebench_data, filebench_mins, filebench_maxes = read_data_with_error(filebench_results_file, filebench_workloads, True, True, file_sys_with_arckfs)
-    lmdb_ext4_raw, lmdb_data, lmdb_mins, lmdb_maxes = read_data_with_error(lmdb_results_file, lmdb_workloads, True, True, file_sys_with_arckfs)
+    syscall_ext4_raw, syscall_latency_data, syscall_mins, syscall_maxes = read_data_with_error(syscall_results_file, syscalls, False, False, file_sys)
+    filebench_ext4_raw, filebench_data, filebench_mins, filebench_maxes = read_data_with_error(filebench_results_file, filebench_workloads, True, True, file_sys)
+    lmdb_ext4_raw, lmdb_data, lmdb_mins, lmdb_maxes = read_data_with_error(lmdb_results_file, lmdb_workloads, True, True, file_sys)
     rocksdb_ext4_raw, rocksdb_data, rocksdb_mins, rocksdb_maxes = read_data_with_error(rocksdb_results_file, rocksdb_workloads, True, True, file_sys)
 
     plot_data(

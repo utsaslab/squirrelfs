@@ -49,7 +49,7 @@ def main():
 
     all_data = {f:{s:[] for s in syscalls} for f in fs}
 
-    csv_out_file = open(output_csv_file + ".csv", mode='w')
+    csv_out_file = open(output_csv_file, mode='w')
     csv_writer = csv.writer(csv_out_file, delimiter=',')
 
     for workload in syscalls:
@@ -72,27 +72,27 @@ def main():
 
         csv_writer.writerow([]) 
 
-    # calculate error
-    error_out_file = open(output_csv_file + "_error.csv", mode="w")
-    csv_writer = csv.writer(error_out_file, delimiter=",")
-    for workload in syscalls:
-        rowheader = []
-        rowheader.append(workload)
-        for filesystem in fs:
-            rowheader.append(filesystem)
+    # # calculate error
+    # error_out_file = open(output_csv_file + "_error.csv", mode="w")
+    # csv_writer = csv.writer(error_out_file, delimiter=",")
+    # for workload in syscalls:
+    #     rowheader = []
+    #     rowheader.append(workload)
+    #     for filesystem in fs:
+    #         rowheader.append(filesystem)
 
-        csv_writer.writerow(rowheader)
+    #     csv_writer.writerow(rowheader)
 
-        err_list = []
-        err_list.append('')
+    #     err_list = []
+    #     err_list.append('')
 
-        for filesystem in fs:
-            data = np.array(all_data[filesystem][workload])
-            err = np.std(data) / np.sqrt(np.size(data))
-            err_list.append(str(err))
+    #     for filesystem in fs:
+    #         data = np.array(all_data[filesystem][workload])
+    #         err = np.std(data) / np.sqrt(np.size(data))
+    #         err_list.append(str(err))
 
-        csv_writer.writerow(err_list)
-        csv_writer.writerow([]) 
+    #     csv_writer.writerow(err_list)
+    #     csv_writer.writerow([]) 
             
 
     # print(all_data)

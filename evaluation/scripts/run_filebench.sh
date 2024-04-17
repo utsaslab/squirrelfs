@@ -1,23 +1,34 @@
 #!/bin/bash
-TEST=$1
-FS=$2
+
+FS=$1
+MOUNT_POINT=$2
+TEST=$3
+OUTPUT_DIR=$4
+PM_DEVICE=$5
+
+if [ -z $FS] | [ -z $MOUNT_POINT ] | [ -z $TEST] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+    echo "Usage: run_filebench.sh fs mountpoint test output_dir pm_device"
+    exit 1
+fi
+mkdir -p $MOUNT_POINT
 
 iterations=5
-filename=output-ae/${FS}/filebench/${TEST}
+filename=$OUTPUT_DIR/${FS}/filebench/${TEST}
 mkdir -p $filename
+
 
 echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 for i in $(seq $iterations)
 do
     if [ $FS = "squirrelfs" ]; then 
-        sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko; sudo mount -t squirrelfs -o init $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "nova" ]; then 
-        sudo -E insmod ../linux/fs/nova/nova.ko; sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod ../linux/fs/nova/nova.ko; sudo mount -t NOVA -o init $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "winefs" ]; then 
-        sudo -E insmod ../linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init /dev/pmem0 /mnt/pmem/
+        sudo -E insmod ../linux/fs/winefs/winefs.ko; sudo mount -t winefs -o init $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "ext4" ]; then 
-        yes | sudo mkfs.ext4 /dev/pmem0 
-        sudo -E mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/
+        yes | sudo mkfs.ext4 $PM_DEVICE 
+        sudo -E mount -t ext4 -o dax $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "arckfs" ]; then 
         sudo ndctl create-namespace -f -e namespace0.0 --mode=devdax
         sudo insmod arckfs/kfs/sufs.ko pm_nr=1
@@ -30,7 +41,7 @@ do
         sudo rmmod sufs
     else 
         sudo -E numactl --membind=0 filebench/filebench -f filebench/workloads/$TEST.f > ${filename}/Run$i
-        sudo umount /dev/pmem0
+        sudo umount $PM_DEVICE
         if [ $FS = "squirrelfs" ]; then 
             sudo rmmod squirrelfs
         elif [ $FS = "nova" ]; then 

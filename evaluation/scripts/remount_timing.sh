@@ -1,29 +1,45 @@
 #!/bin/bash
 FS=$1
-TEST=$2
+MOUNT_POINT=$2
+TEST=$3
+OUTPUT_DIR=$4
+PM_DEVICE=$5
+
+if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+    echo "Usage: remount_timing.sh fs mountpoint test output_dir pm_device"
+    exit 1
+fi
+sudo mkdir -p $MOUNT_POINT
+sudo mkdir -p $OUTPUT_DIR
 
 iterations=10
 dirs=32
 files=1000
 file_size=$((1024*1024))
 fill_device_file_size=$((1024*32))
-filename=output-ae/${FS}/remount_timing/$TEST
+filename=$OUTPUT_DIR/${FS}/remount_timing/$TEST
 mkdir -p $filename
+
+trap ctrl_c INT 
+
+function ctrl_c() {
+    kill -TERM $(jobs -p) 2>/dev/null || true
+}
 
 time_mount() { 
     # measure regular mount timing
     for i in $(seq $iterations)
     do
         if [ $FS = "squirrelfs" ]; then 
-            { time mount -t squirrelfs /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time mount -t squirrelfs $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         elif [ $FS = "nova" ]; then 
-            { time mount -t NOVA /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time mount -t NOVA $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         elif [ $FS = "winefs" ]; then 
-            { time mount -t winefs /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time mount -t winefs $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         elif [ $FS = "ext4" ]; then 
-            { time mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time mount -t ext4 -o dax $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         fi 
-        sudo umount /dev/pmem0
+        sudo umount $PM_DEVICE
     done
     # measure squirrelfs recovery mount timing 
     if [ $FS = "squirrelfs" ]; then 
@@ -31,34 +47,34 @@ time_mount() {
         mkdir -p $filename
         for i in $(seq $iterations)
         do
-            { time mount -t squirrelfs -o force_recovery /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
-            sudo umount /dev/pmem0
+            { time mount -t squirrelfs -o force_recovery $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
+            sudo umount $PM_DEVICE
         done
     fi
 }
 
 init_mount() {
     if [ $FS = "squirrelfs" ]; then 
-        sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/
+        sudo mount -t squirrelfs -o init $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "nova" ]; then 
-        sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/
+        sudo mount -t NOVA -o init $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "winefs" ]; then 
-        sudo mount -t winefs -o init /dev/pmem0 /mnt/pmem/
+        sudo mount -t winefs -o init $PM_DEVICE $MOUNT_POINT/
     elif [ $FS = "ext4" ]; then 
-        yes | sudo mkfs.ext4 /dev/pmem0 
-        sudo -E mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/
+        yes | sudo mkfs.ext4 $PM_DEVICE 
+        sudo -E mount -t ext4 -o dax $PM_DEVICE $MOUNT_POINT/
     fi 
 }
 
 make_files_until_failure() {
     i=1
-    touch /mnt/pmem/file${1}_0
+    touch $MOUNT_POINT/file${1}_0
     retval=$?
     while [ $retval -eq 0 ]
     do 
-        touch /mnt/pmem/file${1}_$i
+        touch $MOUNT_POINT/file${1}_$i
         retval=$?
-        dd if=/dev/zero of=/mnt/pmem/file${1}_$i bs=$file_size count=1 status=none
+        dd if=/dev/zero of=$MOUNT_POINT/file${1}_$i bs=$file_size count=1 status=none
         i=$((i+1))
     done
     echo "created $i files"
@@ -66,13 +82,13 @@ make_files_until_failure() {
 
 # 128GB fills up with approximately 2k files per thread
 make_files_half_full() {
-    touch /mnt/pmem/file${1}_0
+    touch $MOUNT_POINT/file${1}_0
     retval=$?
     for i in $(seq 1000)
     do 
-        touch /mnt/pmem/file${1}_$i
+        touch $MOUNT_POINT/file${1}_$i
         retval=$?
-        dd if=/dev/zero of=/mnt/pmem/file${1}_$i bs=$file_size count=1 status=none
+        dd if=/dev/zero of=$MOUNT_POINT/file${1}_$i bs=$file_size count=1 status=none
     done
 }
 
@@ -177,7 +193,7 @@ make_dirs_half_full() {
 
 fill_device() {
     local thread=$1
-    parent=/mnt/pmem/dir$thread
+    parent=$MOUNT_POINT/dir$thread
     mkdir -p $parent
     touch $parent/file_0
     retval=$?
@@ -202,10 +218,25 @@ fill_device() {
 
 if [ $FS = "squirrelfs" ]; then 
     sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko
+    retval=$?
+    if [ $retval != 0 ]; then 
+        echo "Exiting, error code $?"
+        exit 1
+    fi 
 elif [ $FS = "nova" ]; then 
     sudo -E insmod ../linux/fs/nova/nova.ko
+    retval=$?
+    if [ $retval != 0 ]; then 
+        echo "Exiting, error code $?"
+        exit 1
+    fi 
 elif [ $FS = "winefs" ]; then 
     sudo -E insmod ../linux/fs/winefs/winefs.ko
+    retval=$?
+    if [ $retval != 0 ]; then 
+        echo "Exiting, error code $?"
+        exit 1
+    fi 
 fi 
 
 # set up files to scan on remount
@@ -215,15 +246,15 @@ then
     # just create a bunch of files and fill them in
     for i in $(seq $dirs)
     do 
-        mkdir /mnt/pmem/dir$i
+        mkdir $MOUNT_POINT/dir$i
         for j in $(seq $files)
         do 
-            touch /mnt/pmem/dir$i/file$j
-            dd if=/dev/zero of=/mnt/pmem/dir$i/file$j bs=$file_size count=1 status=none
+            touch $MOUNT_POINT/dir$i/file$j
+            dd if=/dev/zero of=$MOUNT_POINT/dir$i/file$j bs=$file_size count=1 status=none
         done
     done
     df -h 
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "dirs" ]]
 then 
@@ -235,32 +266,32 @@ then
         do 
             for k in $(seq $dirs)
             do 
-                mkdir -p /mnt/pmem/dir$i/dir$j/dir$k
+                mkdir -p $MOUNT_POINT/dir$i/dir$j/dir$k
             done 
         done 
     done 
     df -h 
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "init" ]]
 then 
     for i in $(seq $iterations)
         do 
         if [ $FS = "squirrelfs" ]; then 
-            { time sudo mount -t squirrelfs -o init /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time sudo mount -t squirrelfs -o init $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         elif [ $FS = "nova" ]; then 
-            { time sudo mount -t NOVA -o init /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time sudo mount -t NOVA -o init $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         elif [ $FS = "winefs" ]; then 
-            { time sudo mount -t winefs -o init /dev/pmem0 /mnt/pmem/; } > $filename/Run$i 2>&1
+            { time sudo mount -t winefs -o init $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
         elif [ $FS = "ext4" ]; then 
-            { time sh -c "yes | sudo mkfs.ext4 /dev/pmem0; sudo -E mount -t ext4 -o dax /dev/pmem0 /mnt/pmem/";} > $filename/Run$i 2>&1
+            { time sh -c "yes | sudo mkfs.ext4 $PM_DEVICE; sudo -E mount -t ext4 -o dax $PM_DEVICE $MOUNT_POINT/";} > $filename/Run$i 2>&1
         fi 
-        sudo umount /dev/pmem0
+        sudo umount $PM_DEVICE
     done 
 elif [[ $TEST == "empty" ]]
 then 
     init_mount 
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "fill_files" ]]
 then
@@ -272,7 +303,7 @@ then
     done 
     make_files_until_failure 64
     sleep 30
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "half_files" ]]
 then 
@@ -284,35 +315,35 @@ then
     make_files_half_full 64 
     sleep 30
     df -h
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "fill_dirs" ]]
 then 
     init_mount 
     for i in $(seq 63)
     do 
-        mkdir /mnt/pmem/dir$i
-        make_dirs_until_failure $i /mnt/pmem/dir$i &
+        mkdir $MOUNT_POINT/dir$i
+        make_dirs_until_failure $i $MOUNT_POINT/dir$i &
     done 
-    mkdir /mnt/pmem/dir64
-    make_dirs_until_failure 64 /mnt/pmem/dir64
+    mkdir $MOUNT_POINT/dir64
+    make_dirs_until_failure 64 $MOUNT_POINT/dir64
     sleep 30
     df -i
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "half_dirs" ]]
 then 
     init_mount 
     for i in $(seq 63)
     do 
-        mkdir /mnt/pmem/dir$i
-        make_dirs_half_full $i /mnt/pmem/dir$i &
+        mkdir $MOUNT_POINT/dir$i
+        make_dirs_half_full $i $MOUNT_POINT/dir$i &
     done 
-    mkdir /mnt/pmem/dir64
-    make_dirs_half_full 64 /mnt/pmem/dir64
+    mkdir $MOUNT_POINT/dir64
+    make_dirs_half_full 64 $MOUNT_POINT/dir64
     sleep 30
     df -i
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 elif [[ $TEST == "fill_device" ]]
 then 
@@ -325,7 +356,7 @@ then
     sleep 30
     df -h
     df -i
-    sudo umount /dev/pmem0
+    sudo umount $PM_DEVICE
     time_mount
 fi 
 echo "done running tests"

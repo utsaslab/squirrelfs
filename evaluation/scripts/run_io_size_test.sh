@@ -1,5 +1,12 @@
 #!/bin/bash
 
+MOUNT_POINT=$1
+if [ -z $MOUNT_POINT ]; then 
+    echo "Usage: run_io_size_test.sh mount_point"
+    exit 1
+fi
+sudo mkdir -p $MOUNT_POINT
+
 gcc io_size_test.c -o io_size_test
 
 echo "io size,file_system,avg write latency(us),avg read latency(us),write throughput(kb/ms),read throughput(kb/ms)" > io_size_output.csv
@@ -16,7 +23,7 @@ run_rust() {
 run_ext4() {
     echo -n "ext4$2,$1," >> io_size_output.csv
     echo "yes" | sudo mkfs.ext4 /dev/pmem0 
-    sudo numactl --membind 0 mount -t ext4 -o dax,data=$2 /dev/pmem0 /mnt/pmem/ 
+    sudo numactl --membind 0 mount -t ext4 -o dax,data=$2 /dev/pmem0 $MOUNT_POINT/ 
     sudo ./io_size_test $1 >> io_size_output.csv
     sudo umount /dev/pmem0 
 }
