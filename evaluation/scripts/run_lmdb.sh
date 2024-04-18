@@ -10,7 +10,7 @@ ITERATIONS=$7
 output_dir=$OUTPUT_DIR
 # iterations=5
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $workload] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $OP_COUNT ] | [ -z $ITERATIONS ]; then 
+if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $workload ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $OP_COUNT ] | [ -z $ITERATIONS ]; then 
     echo "Usage: run_lmdb.sh fs mountpoint test output_dir pm_device operation_count iterations"
     exit 1
 fi
@@ -47,10 +47,10 @@ do
     
 
     if [ $FS = "arckfs" ]; then 
-        numactl --membind=0 lmdb/dbbench/bin/t_lmdb_arckfs --benchmarks=$2 --compression=0 --use_existing_db=0 --threads=1 --batch=100 --num=$OP_COUNT > $output_dir/$FS/lmdb/$workload/Run$i 2>&1
+        numactl --membind=0 lmdb/dbbench/bin/t_lmdb_arckfs --benchmarks=$workload --compression=0 --use_existing_db=0 --threads=1 --batch=100 --num=$OP_COUNT > $output_dir/$FS/lmdb/$workload/Run$i 2>&1
         sudo rmmod sufs
     else
-        numactl --membind=0 lmdb/dbbench/bin/t_lmdb --benchmarks=$2 --compression=0 --use_existing_db=0 --threads=1 --batch=100 --num=$OP_COUNT > $output_dir/$FS/lmdb/$workload/Run$i 2>&1
+        numactl --membind=0 lmdb/dbbench/bin/t_lmdb --benchmarks=$workload --compression=0 --use_existing_db=0 --threads=1 --batch=100 --num=$OP_COUNT > $output_dir/$FS/lmdb/$workload/Run$i 2>&1
 
         sudo umount $PM_DEVICE 
 

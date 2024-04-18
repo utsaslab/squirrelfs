@@ -1,4 +1,5 @@
 #!/bin/bash
+sim_threads=32
 
 MOUNT_POINT=$1
 OUTPUT_DIR=$2
@@ -17,4 +18,4 @@ sudo -E scripts/run_lmdb_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 sudo -E scripts/run_linux_checkout.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 scripts/run_compilation_tests.sh $OUTPUT_DIR
 sudo -E scripts/run_remount_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
-scripts/run_model_sims.sh 32 $OUTPUT_DIR
+scripts/run_model_sims.sh $sim_threads $OUTPUT_DIR

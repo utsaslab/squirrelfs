@@ -15,17 +15,28 @@ All experiments in the paper were run with the following system configurations:
 3. 128GB Intel Optane DC Persistent Memory
 4. 128GB DRAM
 
+Minimum recommended environment for running experiments elsewhere (VM or baremetal):
+1. Debian Bookworm or Ubuntu 22.04
+2. Intel processor supporing `clwb` or `clflush`/`clflushopt`
+3. 8 cores
+4. 8 GB PM (emulated or real)
+5. 16 GB RAM (24 if emulating 8GB of PM)
+
 We have set up SquirrelFS and all benchmarks on a machine with these configurations for artifact evaluators. We will provide information about how to access this machine to evaluators during the review period. **Running multiple experiments concurrently on this machine will impact their results, so please coordinate with the other reviewers to ensure experiments do not conflict.**
 
 If you would prefer to use a different machine, please follow the setup instructions in [the README](README.md) to compile and install SquirrelFS. If running SquirrelFS on a different machine, please take note of the following:
 - SquirrelFS can be run without `clwb` support on processors that have `clflush`/`clflushopt` support, but this may negatively impact performance, as these instructions are slower. Support for these instructions can be checked by running `lscpu`. 
 - SquirrelFS can be run on emulated or real PM. We suggest using the provided hardware or another machine with Intel Optane DC PMM; if this is not an option, note that running the experiments on PM emulated with DRAM will have different performance results.
+- The filebench workload `webproxy` may experience errors on machines with a relatively low number of threads. To avoid this, we recommend modifying the `nthreads` value `evaluation/filebench/workloads/webproxy.f`; a value of 64 should succeed on a machine with the minimum recommended configuration.
+- The default configurations of the RocksDB and LMDB benchmarks will run out of space on devices smaller than 128GB. If using a smaller PM device, please scale the defaults (25M operations and records for RocksDB, 100M operations for LMDB) accordingly (e.g., with an 8GB device, divide the defaults by 16 since 128/8=16).
 
 ## Running experiments
 
-Scripts to run all experiments and parse and plot their results are included in the `evaluation/` directory. This section provides details on how to run each experiment and how to compare results to those presented in the paper. The raw output of each script will be placed in the `output-ae` folder. Note that experiments **should not be run in parallel**, as this will impact results.
+Scripts to run all experiments and parse and plot their results are included in the `evaluation/` directory. This section provides details on how to run each experiment and how to compare results to those presented in the paper. The raw output of each script will be placed in the specified output folder. Note that experiments **should not be run in parallel**, as this will impact results.
 
 **All of the following commands should be run from within the `evaluation/` directory.**
+
+All experiments use default arguments for iterations, thread count, and/or other experiment-specific parameters that work on the provided machine. Unless otherwise noted, the default values are the same ones we used in the paper. If you are running experiments on a different machine, please see the [Modifying experiments](#modifying-experiments) for info on changing these values.
 
 ### Setup
 
@@ -44,53 +55,128 @@ Each experiment scripts requires some subset of the following arguments:
 
 ### System call latency (15-20 min)
 
-**To run the system call latency tests on all evaluated file systems, run `sudo -E scripts/run_syscall_latency_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 15-20 minutes to run all latency tests on all file systems on the provided machine.
+**To run the system call latency tests on all evaluated file systems, run:**
+```
+sudo -E scripts/run_syscall_latency_tests.sh <mount_point> <output_dir> <pm_device>
+``` 
+It takes approximately 15-20 minutes to run all latency tests on all file systems on the provided machine.
 
-To run the syscall latency test on a single file system, run `scripts/run_syscall_latency.sh <fs> <mount_point> <output_dir> <pm_device>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
+To run the syscall latency test on a single file system, run 
+```
+sudo -E scripts/run_syscall_latency.sh <fs> <mount_point> <output_dir> <pm_device>
+```
+where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
 ### Filebench (1.5-2 hours)
 
 **To run all filebench workloads, run `sudo -E scripts/run_filebench_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 1.5-2 hours to run all filebench workloads on all file systems on the provided machine.
 
-To specify the workload and file system to test, run `sudo -E scripts/run_filebench.sh <mount_point> <workload> <fs> <output_dir> <pm_device>` where `workload` specifies the filebench workload to run (`fileserver`, `varmail`, `webproxy`, or `webserver`) and `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
+To specify the workload and file system to test, run 
+```
+sudo -E scripts/run_filebench.sh <mount_point> <workload> <fs> <output_dir> <pm_device> <iterations>
+``` 
+where `workload` specifies the filebench workload to run (`fileserver`, `varmail`, `webproxy`, or `webserver`) and `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
 ### YCSB workloads on RocksDB (4-4.5 hours)
 
-**To run all YCSB workloads on RocksDB, run `sudo -E scripts/run_rocksdb_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 4-4.5 hours to run these experiments on all file systems on the provided machine.
+**To run all YCSB workloads on RocksDB, run** 
+```
+sudo -E scripts/run_rocksdb_tests.sh <mount_point> <output_dir> <pm_device>
+``` 
+It takes approximately 4-4.5 hours to run these experiments on all file systems on the provided machine.
 
-To evaluate a specific file system, run `scripts/run_rocksdb.sh <fs> <mount_point> <output_dir> <pm_device>`` where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`). This script runs all tested YCSB workloads by default, as some YCSB workloads depend on each other, but a subset can be selected by commenting out workloads to skip on lines 63-70. 
+To evaluate a specific file system, run 
+```
+sudo -E scripts/run_rocksdb.sh <fs> <mount_point> <output_dir> <pm_device> <operation count> <record count> <num threads> <iterations>
+``` 
+where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`). This script runs all tested YCSB workloads by default, as some YCSB workloads depend on each other, but a subset can be selected by commenting out workloads to skip in the script.
 
 ### LMDB (~7 hours)
 
-**To run all LMDB workloads, run `sudo -E scripts/run_lmdb_tests.sh <mount_point> <output_dir> <pm_device>`.** In the paper, we ran each experiment 10 times, but this takes 14-15 hours, so the provided script runs 5 iterations to make this experiment more reasonable for artifact evaluators. You modify the number of iterations by editing the value of the `iterations` variable in `scripts/run_lmdb.sh`; note that reducing the number of iterations may introduce more variation.
+**To run all LMDB workloads, run:**
+```
+sudo -E scripts/run_lmdb_tests.sh <mount_point> <output_dir> <pm_device>
+```
+<!-- In the paper, we ran each experiment 10 times, but this takes 14-15 hours, so the provided script runs 5 iterations to make this experiment more reasonable for artifact evaluators. You modify the number of iterations by editing the value of the `iterations` variable in `scripts/run_lmdb.sh`; note that reducing the number of iterations may introduce more variation. -->
 
-To specify the workload and file system to test, run `scripts/run_lmdb.sh <mount_point> <workload> <fs> <output_dir> <pm_device>`` where `workload` specifies the LMDB workload to run (`fillseqbatch`, `fillrandbatch`, or `fillrandom`) and `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
+To specify the workload and file system to test, run 
+```
+sudo -E scripts/run_lmdb.sh <mount_point> <workload> <fs> <output_dir> <pm_device> <operation_count> <iterations>
+``` 
+where `workload` specifies the LMDB workload to run (`fillseqbatch`, `fillrandbatch`, or `fillrandom`) and `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`). 
+
+**Note**: we used 10 iterations for the paper, but this takes 14-15 hours to run. The provided scripts use 5 iterations by default to reduce the runtime of this experiment.
 
 ### Linux checkout (2 hours)
 
-**To run the Linux checkout experiment on all file systems, run `sudo -E scripts/run_linux_checkout.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 2 hours to run these experiments on all file systems on the provided machine.
+**To run the Linux checkout experiment on all file systems, run:** 
+```
+sudo -E scripts/run_linux_checkout.sh <mount_point> <output_dir> <pm_device>
+```
+It takes approximately 2 hours to run these experiments on all file systems on the provided machine.
 
-To run the experiment on a single file system, run `sudo -E scripts/linux_checkout.sh <fs> <mount_point> <output_dir> <pm_device>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
+**Note**: this experiment uses `git clone` and looks in `$HOME/.ssh/id_ed25519` for the private key to use. To change the path to the key, update the value of `key_path` in `scripts/linux_checkout.sh`. 
+
+To run the experiment on a single file system, run 
+```
+sudo -E scripts/linux_checkout.sh <fs> <mount_point> <output_dir> <pm_device> <iterations>
+```
+where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
 ### Compilation (15 minutes)
 
-**To measure compilation times of all file systems, run `scripts/run_compilation_tests.sh <output_dir>`.** It takes approximately 15 minutes to run these experiments on all file systems on the provided machine.
+**To measure compilation times of all file systems, run:** 
+```
+scripts/run_compilation_tests.sh <output_dir>
+```
+It takes approximately 15 minutes to run these experiments on all file systems on the provided machine.
 
-<!-- To run the experiment on a single file system, run `scripts/compilation.sh <fs>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`). -->
+To run the experiment on a single file system, run 
+```
+scripts/compilation.sh <fs> <iterations>
+```
+where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
 ### Mount times (1 hour)
 
-**To run experiments to measure the mount time of SquirrelFS, run `sudo -E scripts/run_remount_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 1 hour to run these experiments on SquirrelFS on the provided machine.
+**To run experiments to measure the mount time of SquirrelFS, run:** 
+```
+sudo -E scripts/run_remount_tests.sh <mount_point> <output_dir> <pm_device>
+``` 
+It takes approximately 1 hour to run these experiments on SquirrelFS on the provided machine.
 
 **Note**: When filling up the device to measure the remount timing on a full system, the scripts spawn many processes to create files until the device runs out of space and attempting to create or write to a file returns an error. You may see errors indicating that there is no space left on the device when running this experiment -- this is expected.
 
-We only provide mount time measurements for SquirrelFS in the paper, but if you would like to measure them for other file systems, run `sudo -E scripts/remount_timing.sh <fs> <mount_point> <test> <output_dir> <pm_device>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`) and `test` specifies which experiment to run (`init`, `empty`, or `fill_device`). The script supports several more experiments, including filling the device with only data files or only directories, but we did not include results from these experiments in the paper. Note that the script only supports automatically running post-crash recovery code for SquirrelFS, as SquirrelFS has a mount-time argument (`force_recovery`) to force recovery code to run on a clean unmount. The other file systems do not have mount-time arguments to force crash recovery and have to be manually modified to make this code run if a crash has not occurred.
+We only provide mount time measurements for SquirrelFS in the paper, but if you would like to measure them for other file systems or run a specific test on SquirrelFS,, run 
+```
+sudo -E scripts/remount_timing.sh <fs> <mount_point> <test> <output_dir> <pm_device>
+```
+where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`) and `test` specifies which experiment to run (`init`, `empty`, or `fill_device`). The script supports several more experiments, including filling the device with only data files or only directories, but we did not include results from these experiments in the paper. Note that the script only supports automatically running post-crash recovery code for SquirrelFS, as SquirrelFS has a mount-time argument (`force_recovery`) to force recovery code to run on a clean unmount. The other file systems do not have mount-time arguments to force crash recovery and have to be manually modified to make this code run if a crash has not occurred.
 
 ### Model checking (30 min)
 
 Fully checking the Alloy model of SquirrelFS takes weeks and cannot be done within the artifact evaluation period. Instead, we provide a set of simulations to run on the model that produce example traces of various operations that SquirrelFS supports. 
 
-**To run this set of simulations, run `scripts/run_model_sims.sh <threads> <output_dir>` where `threads` is the number of threads to use to run the simulations in parallel.** To achieve the best results, we suggest using half of the cores in your machine as the number of threads (e.g. for a 64 core machine, use 32 threads), as some simulations are memory-intensive. It takes approximately 30 minutes to run all simulations with 32 cores.
+**To run this set of simulations, run:** 
+```
+scripts/run_model_sims.sh <threads> <output_dir>
+``` 
+where `threads` is the number of threads to use to run the simulations in parallel. 
+
+To achieve the best results, we suggest using half of the cores in your machine as the number of threads (e.g. for a 64 core machine, use 32 threads), as some simulations are memory-intensive. It takes approximately 30 minutes to run all simulations with 32 cores.
+
+### Modifying experiments
+
+Evaluating SquirrelFS on a machine with fewer resources/less PM space may require modifying some experiment parameters. The provided scripts that run all tests in each experiment provide default values; we provide details on how to change these parameters in these scripts. As described above, the experiments can also be directly customized by running tests on different file systems individually. 
+
+1. **Syscall latency**: The system call latency experiments are small and can be run on as little as 1GB of PM. The number of iterations is hardcoded into `tests/syscall_latency.c`; changing them requires modifying this script. The syscall latency helper scripts automatically recompile this file. 
+2. **Filebench**: To change the number of iterations, update the `iterations` value in `scripts/run_filebench_tests.sh`. Other experiment-specific parameters are hardcoded into the filebench workload files, which can be found at `filebench/workloads`; note that changing these values can cause errors and/or significantly change results.
+3. **YCSB on RocksDB**: The number of operations and records per test, as well as the number of threads and iterations, can be modified by changing the corresponding values in `scripts/run_rocksdb_tests.sh`. The number of records/operations may need to be decreased for PM devices less than 128GB in size; however, note that this may cause more variation in results.
+4. **LMDB**: The number of operations per test and the number of iterations to run can be modified by changing the corresponding values in `scripts/run_lmdb_tests.sh`.
+5. **Linux checkout**: The number of iterations can be modified in `scripts/run_linux_checkout.sh`. Note that this experiment requires a minimum of TODO GB of PM (emulated or real).
+6. **Compilation**: The number of iterations can be modified in `scripts/run_compilation_tests.sh`.
+7. **Remount**: The number of iterations can be modified in `scripts/run_remount_tests.sh`. Note that changing the number of iterations will not significantly impact the runtime of this experiment, as the most time-consuming part is filling up the device in the `fill_device` epxeriment, which is always only done once.
+8. **Model simulations**: The number of threads can be modified in `scripts/run_all.sh` or by running `scripts/run_model_sims.sh` and specifying the desired number of threads.
 
 ## Evaluating results
 

@@ -1,5 +1,7 @@
 #!/bin/bash 
 
+sudo apt install libsnappy-dev liblmdb-dev
+
 cd filebench 
 libtoolize
 aclocal
