@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# iterations=10
-iterations=1
+iterations=10
 
 OUTPUT_DIR=$1
 if [ -z $OUTPUT_DIR ]; then 

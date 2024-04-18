@@ -14,11 +14,11 @@ mkdir -p $results_dir
 # parse results from each experiment
 python3 scripts/parse_syscall_latency.py 4 ext4 nova winefs squirrelfs $num_syscall_iterations 0 $output_dir $data_dir/syscall_latency.csv
 python3 scripts/parse_filebench.py 4 ext4 nova winefs squirrelfs $num_filebench_iterations 1 $output_dir $data_dir/filebench.csv
-# python3 scripts/parse_rocksdb.py 4 ext4 nova winefs squirrelfs $num_rocksdb_iterations 1 $output_dir $data_dir/rocksdb.csv
+python3 scripts/parse_rocksdb.py 4 ext4 nova winefs squirrelfs $num_rocksdb_iterations 1 $output_dir $data_dir/rocksdb.csv
 python3 scripts/parse_lmdb.py 4 ext4 nova winefs squirrelfs $num_lmdb_iterations 1 $output_dir $data_dir/lmdb.csv
 
-# # plot figure 5
-# python3 scripts/plot_all.py $data_dir/syscall_latency.csv $data_dir/filebench.csv $data_dir/rocksdb.csv $data_dir/lmdb.csv $results_dir/figure5.pdf 
+# plot figure 5
+python3 scripts/plot_all.py $data_dir/syscall_latency.csv $data_dir/filebench.csv $data_dir/rocksdb.csv $data_dir/lmdb.csv $results_dir/figure5.pdf 
 
 # # TODO: parse linux checkout numbers and print them out as something reasonable
 

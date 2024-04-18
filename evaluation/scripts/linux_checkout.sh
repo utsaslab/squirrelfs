@@ -13,7 +13,7 @@ if [ -z $FS ] | [ -z $mount_point ] | [ -z $output_dir ] | [ -z $pm_device ] | [
     exit 1
 fi
 sudo mkdir -p $mount_point
-sudo mkdir -p $output_dir
+sudo mkdir -p $output_dir/$FS/checkout
 
 # iterations=10
 

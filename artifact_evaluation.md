@@ -19,16 +19,17 @@ Minimum recommended environment for running experiments elsewhere (VM or baremet
 1. Debian Bookworm or Ubuntu 22.04
 2. Intel processor supporing `clwb` or `clflush`/`clflushopt`
 3. 8 cores
-4. 8 GB PM (emulated or real)
-5. 16 GB RAM (24 if emulating 8GB of PM)
+4. 20 GB PM (emulated or real)
+5. 8-16GB DRAM (in addition to DRAM used to emulate PM)
 
 We have set up SquirrelFS and all benchmarks on a machine with these configurations for artifact evaluators. We will provide information about how to access this machine to evaluators during the review period. **Running multiple experiments concurrently on this machine will impact their results, so please coordinate with the other reviewers to ensure experiments do not conflict.**
 
 If you would prefer to use a different machine, please follow the setup instructions in [the README](README.md) to compile and install SquirrelFS. If running SquirrelFS on a different machine, please take note of the following:
 - SquirrelFS can be run without `clwb` support on processors that have `clflush`/`clflushopt` support, but this may negatively impact performance, as these instructions are slower. Support for these instructions can be checked by running `lscpu`. 
 - SquirrelFS can be run on emulated or real PM. We suggest using the provided hardware or another machine with Intel Optane DC PMM; if this is not an option, note that running the experiments on PM emulated with DRAM will have different performance results.
-- The filebench workload `webproxy` may experience errors on machines with a relatively low number of threads. To avoid this, we recommend modifying the `nthreads` value `evaluation/filebench/workloads/webproxy.f`; a value of 64 should succeed on a machine with the minimum recommended configuration.
-- The default configurations of the RocksDB and LMDB benchmarks will run out of space on devices smaller than 128GB. If using a smaller PM device, please scale the defaults (25M operations and records for RocksDB, 100M operations for LMDB) accordingly (e.g., with an 8GB device, divide the defaults by 16 since 128/8=16).
+- The filebench workload `webproxy` may experience errors on machines with a relatively low number of threads or less PM. If the test fails, try reducing the value of `nthreads` in `evaluation/filebench/workloads/webproxy.f`.
+- The default configurations of the RocksDB and LMDB benchmarks will run out of space on devices smaller than 128GB. If using a smaller PM device, please reduce the number of operations/records proportionally to the size of the device (e.g., if using 64 GB of PM, use 1/2 of the default values).
+- Most experiments can be done with less than 20GB of PM; the exception is the Linux checkout experiment, as the kernel source code takes up approximately 16GB of storage space. 
 
 ## Running experiments
 

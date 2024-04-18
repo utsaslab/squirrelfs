@@ -1,12 +1,13 @@
 #!/bin/bash
 
 FS=$1
-iterations=$2
+OUTPUT_DIR=$2
+iterations=$3
 
 eval_dir=$(pwd)
 KERNEL_SOURCE=../../linux
 
-output_dir=output-ae/$FS/compilation
+output_dir=$OUTPUT_DIR/$FS/compilation
 sudo mkdir -p $output_dir
 if [ $FS = "nova" ] || [ $FS = "squirrelfs" ] || [ $FS = "winefs" ]
 then
