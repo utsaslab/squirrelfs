@@ -33,7 +33,7 @@ load_workload() {
     cat /proc/vmstat | grep -e "pgfault" -e "pgmajfault" -e "thp" -e "nr_file" > $output_dir/$FS/rocksdb/Load$workload_id/pg_faults_before_Run$i 2>&1
 
     echo "load $workload_id"
-    time sudo -E numactl --membind=0 ycsb-0.17.0/bin/ycsb load rocksdb -threads $NUM_THREADS -P "$HOME/ycsb-0.17.0/workloads/workload$workload_id" -p rocksdb.dir=$MOUNT_POINT/rocksdb -p recordcount=$$REC_COUNT -p operationcount=$OP_COUNT > $output_dir/$FS/rocksdb/Load$workload_id/Run$i 2>&1
+    time sudo -E numactl --membind=0 ycsb-0.17.0/bin/ycsb load rocksdb -threads $NUM_THREADS -P "ycsb-0.17.0/workloads/workload$workload_id" -p rocksdb.dir=$MOUNT_POINT/rocksdb -p recordcount=$REC_COUNT -p operationcount=$OP_COUNT > $output_dir/$FS/rocksdb/Load$workload_id/Run$i 2>&1
 
     cat /proc/vmstat | grep -e "pgfault" -e "pgmajfault" -e "thp" -e "nr_file" > $output_dir/$FS/rocksdb/Load$workload_id/pg_faults_after_Run$i 2>&1
 }
@@ -45,7 +45,7 @@ run_workload() {
     cat /proc/vmstat | grep -e "pgfault" -e "pgmajfault" -e "thp" -e "nr_file" 2>&1 > $output_dir/$FS/rocksdb/Run$workload_id/pg_faults_before_Run$i
 
     echo "run $workload_id"
-    time sudo -E numactl --membind=0 ycsb-0.17.0/bin/ycsb run rocksdb -threads $NUM_THREADS -P "$HOME/ycsb-0.17.0/workloads/workload$workload_id" -p rocksdb.dir=$MOUNT_POINT/rocksdb -p recordcount=$$REC_COUNT -p operationcount=$OP_COUNT > $output_dir/$FS/rocksdb/Run$workload_id/Run$i 2>&1
+    time sudo -E numactl --membind=0 ycsb-0.17.0/bin/ycsb run rocksdb -threads $NUM_THREADS -P "ycsb-0.17.0/workloads/workload$workload_id" -p rocksdb.dir=$MOUNT_POINT/rocksdb -p recordcount=$REC_COUNT -p operationcount=$OP_COUNT > $output_dir/$FS/rocksdb/Run$workload_id/Run$i 2>&1
 
     cat /proc/vmstat | grep -e "pgfault" -e "pgmajfault" -e "thp" -e "nr_file" 2>&1 > $output_dir/$FS/rocksdb/Run$workload_id/pg_faults_after_Run$i
 }
