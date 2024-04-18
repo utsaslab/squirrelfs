@@ -4,15 +4,16 @@ MOUNT_POINT=$2
 TEST=$3
 OUTPUT_DIR=$4
 PM_DEVICE=$5
+ITERATIONS=$6
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
-    echo "Usage: remount_timing.sh fs mountpoint test output_dir pm_device"
+if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $ITERATIONS ]; then 
+    echo "Usage: remount_timing.sh fs mountpoint test output_dir pm_device iterations"
     exit 1
 fi
 sudo mkdir -p $MOUNT_POINT
 sudo mkdir -p $OUTPUT_DIR
 
-iterations=10
+# iterations=10
 dirs=32
 files=1000
 file_size=$((1024*1024))
@@ -28,7 +29,7 @@ function ctrl_c() {
 
 time_mount() { 
     # measure regular mount timing
-    for i in $(seq $iterations)
+    for i in $(seq $ITERATIONS)
     do
         if [ $FS = "squirrelfs" ]; then 
             { time mount -t squirrelfs $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
@@ -45,7 +46,7 @@ time_mount() {
     if [ $FS = "squirrelfs" ]; then 
         filename=${filename}_recovery
         mkdir -p $filename
-        for i in $(seq $iterations)
+        for i in $(seq $ITERATIONS)
         do
             { time mount -t squirrelfs -o force_recovery $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1
             sudo umount $PM_DEVICE
@@ -275,7 +276,7 @@ then
     time_mount
 elif [[ $TEST == "init" ]]
 then 
-    for i in $(seq $iterations)
+    for i in $(seq $ITERATIONS)
         do 
         if [ $FS = "squirrelfs" ]; then 
             { time sudo mount -t squirrelfs -o init $PM_DEVICE $MOUNT_POINT/; } > $filename/Run$i 2>&1

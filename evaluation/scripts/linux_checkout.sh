@@ -4,15 +4,16 @@ FS=$1
 mount_point=$2
 output_dir=$3
 pm_device=$4
+ITERATIONS=$5
 
-if [ -z $FS] | [ -z $mount_point ] | [ -z $output_dir ] | [ -z $pm_device ]; then 
-    echo "Usage: linux_checkout.sh fs mountpoint output_dir pm_device"
+if [ -z $FS ] | [ -z $mount_point ] | [ -z $output_dir ] | [ -z $pm_device ] | [ -z $ITERATIONS ]; then 
+    echo "Usage: linux_checkout.sh fs mountpoint output_dir pm_device iterations"
     exit 1
 fi
 sudo mkdir -p $MOUNT_POINT
 sudo mkdir -p $OUTPUT_DIR
 
-iterations=10
+# iterations=10
 
 versions=("v3.0" "v4.0" "v5.0" "v6.0")
 
@@ -40,7 +41,7 @@ cd $mount_point/linux
 # check out the oldest tagged version
 GIT_SSH_COMMAND='ssh -i ${HOME}/.ssh/id_ed25519 -o IdentitiesOnly=yes' git checkout v2.6.12
 
-for i in $(seq $iterations)
+for i in $(seq $ITERATIONS)
 do 
     for tag in ${versions[@]} 
     do 

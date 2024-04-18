@@ -46,7 +46,7 @@ Each experiment scripts requires some subset of the following arguments:
 
 **To run the system call latency tests on all evaluated file systems, run `sudo -E scripts/run_syscall_latency_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 15-20 minutes to run all latency tests on all file systems on the provided machine.
 
-To run the syscall latency test on a single file system, run `scripts/run_syscall_latency.sh <fs> <mount_point> <output_dir> <pm_device>``, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
+To run the syscall latency test on a single file system, run `scripts/run_syscall_latency.sh <fs> <mount_point> <output_dir> <pm_device>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
 ### Filebench (1.5-2 hours)
 
@@ -70,7 +70,7 @@ To specify the workload and file system to test, run `scripts/run_lmdb.sh <mount
 
 **To run the Linux checkout experiment on all file systems, run `sudo -E scripts/run_linux_checkout.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 2 hours to run these experiments on all file systems on the provided machine.
 
-To run the experiment on a single file system, run `sudo -E scripts/linux_checkout.sh <fs> <mount_point> <output_dir> <pm_device>``, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
+To run the experiment on a single file system, run `sudo -E scripts/linux_checkout.sh <fs> <mount_point> <output_dir> <pm_device>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
 ### Compilation (15 minutes)
 
@@ -84,7 +84,7 @@ To run the experiment on a single file system, run `sudo -E scripts/linux_checko
 
 **Note**: When filling up the device to measure the remount timing on a full system, the scripts spawn many processes to create files until the device runs out of space and attempting to create or write to a file returns an error. You may see errors indicating that there is no space left on the device when running this experiment -- this is expected.
 
-We only provide mount time measurements for SquirrelFS in the paper, but if you would like to measure them for other file systems, run `sudo -E scripts/remount_timing.sh <fs> <test>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`) and `test` specifies which experiment to run (`init`, `empty`, or `fill_device`). The script supports several more experiments, including filling the device with only data files or only directories, but we did not include results from these experiments in the paper. Note that the script only supports automatically running post-crash recovery code for SquirrelFS, as SquirrelFS has a mount-time argument (`force_recovery) to force recovery code to run on a clean unmount. The other file systems do not have mount-time arguments to force crash recovery and have to be manually modified to make this code run if a crash has not occurred.
+We only provide mount time measurements for SquirrelFS in the paper, but if you would like to measure them for other file systems, run `sudo -E scripts/remount_timing.sh <fs> <mount_point> <test> <output_dir> <pm_device>`, where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`) and `test` specifies which experiment to run (`init`, `empty`, or `fill_device`). The script supports several more experiments, including filling the device with only data files or only directories, but we did not include results from these experiments in the paper. Note that the script only supports automatically running post-crash recovery code for SquirrelFS, as SquirrelFS has a mount-time argument (`force_recovery`) to force recovery code to run on a clean unmount. The other file systems do not have mount-time arguments to force crash recovery and have to be manually modified to make this code run if a crash has not occurred.
 
 ### Model checking (30 min)
 

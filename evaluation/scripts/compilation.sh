@@ -1,7 +1,7 @@
 #!/bin/bash
 
 FS=$1
-iterations=10
+iterations=$2
 
 eval_dir=$(pwd)
 KERNEL_SOURCE=../../linux

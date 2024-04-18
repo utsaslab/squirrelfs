@@ -5,14 +5,15 @@ MOUNT_POINT=$2
 TEST=$3
 OUTPUT_DIR=$4
 PM_DEVICE=$5
+ITERATIONS=$6
 
-if [ -z $FS] | [ -z $MOUNT_POINT ] | [ -z $TEST] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
-    echo "Usage: run_filebench.sh fs mountpoint test output_dir pm_device"
+if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $ITERATIONS ]; then 
+    echo "Usage: run_filebench.sh fs mountpoint test output_dir pm_device iterations"
     exit 1
 fi
 mkdir -p $MOUNT_POINT
 
-iterations=5
+# iterations=5
 filename=$OUTPUT_DIR/${FS}/filebench/${TEST}
 mkdir -p $filename
 
