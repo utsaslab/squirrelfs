@@ -16,12 +16,14 @@ SquirrelFS is a file system for persistent memory (PM) written in Rust that uses
 5. [Setting up PM](#setting-up-pm)
 6. [Kernel configuration](#kernel-configuration)
 
-## System requirements
+## Minimum system requirements
 
 1. Ubuntu 22.04 or Debian Bookworm
 2. 128MB persistent memory (emulated or real)
 3. 16GB DRAM
-4. 25GB free disk space
+4. 20GB free disk space
+
+**Note**: These are minimum general requirements for SquirrelFS. The recommended artifact evaluation requirements are listed in [artifact_evaluation.md](artifact_evaluation.md).
 
 SquirrelFS can be run in a VM or on a baremetal machine.
 
