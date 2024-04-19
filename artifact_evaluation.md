@@ -21,6 +21,7 @@ Minimum recommended environment for running experiments elsewhere (VM or baremet
 3. 8 cores
 4. 20 GB PM (emulated or real)
 5. 8-16GB DRAM (in addition to DRAM used to emulate PM)
+6. Approximately 20GB free storage space
 
 We have set up SquirrelFS and all benchmarks on a machine with these configurations for artifact evaluators. We will provide information about how to access this machine to evaluators during the review period. **Running multiple experiments concurrently on this machine will impact their results, so please coordinate with the other reviewers to ensure experiments do not conflict.**
 
@@ -41,7 +42,7 @@ All experiments use default arguments for iterations, thread count, and/or other
 
 ### Setup
 
-Run `scripts/build_benchmarks.sh` to compile filebench and LMDB. All other experiment scripts use pre-built binaries or compile the required tests.
+Run `scripts/build_benchmarks.sh` to compile filebench and LMDB and install dependencies required by the evaluation scripts. All other experiment scripts use pre-built binaries or compile the required tests. 
 
 ### Arguments
 
@@ -98,7 +99,6 @@ where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or
 ```
 sudo -E scripts/run_lmdb_tests.sh <mount_point> <output_dir> <pm_device>
 ```
-<!-- In the paper, we ran each experiment 10 times, but this takes 14-15 hours, so the provided script runs 5 iterations to make this experiment more reasonable for artifact evaluators. You modify the number of iterations by editing the value of the `iterations` variable in `scripts/run_lmdb.sh`; note that reducing the number of iterations may introduce more variation. -->
 
 To specify the workload and file system to test, run 
 ```
@@ -174,7 +174,7 @@ Evaluating SquirrelFS on a machine with fewer resources/less PM space may requir
 2. **Filebench**: To change the number of iterations, update the `iterations` value in `scripts/run_filebench_tests.sh`. Other experiment-specific parameters are hardcoded into the filebench workload files, which can be found at `filebench/workloads`; note that changing these values can cause errors and/or significantly change results.
 3. **YCSB on RocksDB**: The number of operations and records per test, as well as the number of threads and iterations, can be modified by changing the corresponding values in `scripts/run_rocksdb_tests.sh`. The number of records/operations may need to be decreased for PM devices less than 128GB in size; however, note that this may cause more variation in results.
 4. **LMDB**: The number of operations per test and the number of iterations to run can be modified by changing the corresponding values in `scripts/run_lmdb_tests.sh`.
-5. **Linux checkout**: The number of iterations can be modified in `scripts/run_linux_checkout.sh`. Note that this experiment requires a minimum of TODO GB of PM (emulated or real).
+5. **Linux checkout**: The number of iterations can be modified in `scripts/run_linux_checkout.sh`. Note that this experiment requires a minimum of 20 GB of PM (emulated or real).
 6. **Compilation**: The number of iterations can be modified in `scripts/run_compilation_tests.sh`.
 7. **Remount**: The number of iterations can be modified in `scripts/run_remount_tests.sh`. Note that changing the number of iterations will not significantly impact the runtime of this experiment, as the most time-consuming part is filling up the device in the `fill_device` epxeriment, which is always only done once.
 8. **Model simulations**: The number of threads can be modified in `scripts/run_all.sh` or by running `scripts/run_model_sims.sh` and specifying the desired number of threads.
@@ -197,11 +197,15 @@ We first describe SquirrelFS's key claims, then describe how to generate the tab
 
 We provide scripts to generate Figure 5 and Tables 2 and 3 from the paper, and to process other data (Linux checkout times, model checking simulation results) into a readable format.
 
-**To generate all scripts and tables, run `scripts/process_results.sh`.** If you have modified any of the experiment scripts (e.g., output directory, number of iterations), please update this script accordingly.
+**To generate all scripts and tables, run `scripts/process_results.sh <output_dir>`.** If you have modified any of the experiment scripts (e.g., output directory, number of iterations), please update this script accordingly.
 
 This script creates a directory `results-ae`, generates the following files, and places them in that directory.
-1. `figure5.pdf`: A PDF with bar charts showing latency or throughput for the system call latency, filebench, RocksDB, and LMDB workloads. 
-2. 
-3. 
-
-Additionally, the script prints out the total number of model simulations run and the number that passed and failed. It will also print the name of any failing simulations. All simulations are expected to pass.
+1. `figure5.pdf`: A PDF with bar charts showing latency or throughput for the system call latency, filebench, RocksDB, and LMDB workloads. This graph should look similar to Figure 5 in the paper.
+2. `checkout_timing.txt`: A text file with a table containing the average time in seconds to check out different versions of the Linux kernel with `git` on each file system. We do not provide these numbers directly in the paper due to space limitations, but we expect the averages for each file system to be within roughly 10% of each other for a given version.
+3. `remount_timing.txt`: A text file with a table containing the average time in seconds to mount SquirrelFS in different configurations. The exact numbers will differ on different systems, but we expect them to be roughly proportional to the numbers in Table 2 after accounting for differences in PM device size. 
+4. `compilation.txt`: A text file with a table containing the average time to compile each file system, corresponding to Table 3 in the paper. The exact numbers will differ on different systems, but we expect them to follow the same pattern as in the paper. 
+5. `model_results`: A text file indicating how many model simulations passed. This file's contents should be:
+```
+Passed: 110 Failed: 0
+Total simulations run: 110
+```

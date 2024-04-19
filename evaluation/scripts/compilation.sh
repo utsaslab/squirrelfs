@@ -32,4 +32,11 @@ do
     fi
 done
 
+# make sure the file systems are all compiled at the end
+if [ $FS = "nova" ] || [ $FS = "squirrelfs" ] || [ $FS = "winefs" ]
+then
+    cd ../..
+    make LLVM=-14 fs/$FS/$FS.ko
+fi
+
 cd $eval_dir

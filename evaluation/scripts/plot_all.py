@@ -160,7 +160,7 @@ def plot_data(output_file, syscall_latency_data, syscall_mins, syscall_maxes, fi
     axs[1,1].set_axisbelow(True)
     axs[1,1].tick_params(left = False, bottom = False, pad=0.5)
 
-    plt.figlegend(file_sys_with_arckfs, loc="upper center", ncol=3)
+    plt.figlegend(file_sys, loc="upper center", ncol=3)
     
     plt.subplots_adjust(left=0.075, right=0.975, top=0.9, bottom=0.1, wspace=0.175, hspace=0.375)
     plt.savefig(output_file, format="pdf")

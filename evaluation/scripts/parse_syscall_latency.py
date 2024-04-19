@@ -39,10 +39,10 @@ def main():
     for i in range(start_run_id, start_run_id + num_runs):
         runs.append(i)
 
-    print('file systems evaluated = ')
-    print(fs)
-    print('number of runs = ' + str(num_runs) + ', start run id = ' + str(start_run_id))
-    print('result directory = ' + result_dir)
+    # print('file systems evaluated = ')
+    # print(fs)
+    # print('number of runs = ' + str(num_runs) + ', start run id = ' + str(start_run_id))
+    # print('result directory = ' + result_dir)
 
     # syscalls = ["append_1k", "append_16k", "append_64k", "read_1k", "read_16k", "read_64k", "creat", "mkdir", "rename", "unlink"]
     syscalls = ["append_1k", "append_16k", "read_1k", "read_16k", "creat", "mkdir", "rename", "unlink"]

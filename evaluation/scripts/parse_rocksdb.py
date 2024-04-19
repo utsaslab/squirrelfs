@@ -39,10 +39,10 @@ def main():
     for i in range(start_run_id, start_run_id + num_runs):
         runs.append(i)
 
-    print('file systems evaluated = ')
-    print(fs)
-    print('number of runs = ' + str(num_runs) + ', start run id = ' + str(start_run_id))
-    print('result directory = ' + result_dir)
+    # print('file systems evaluated = ')
+    # print(fs)
+    # print('number of runs = ' + str(num_runs) + ', start run id = ' + str(start_run_id))
+    # print('result directory = ' + result_dir)
 
     workloads = ['Loada', 'Runa', 'Runb', 'Runc', 'Rund', 'Loade', 'Rune', 'Runf']
     dirs = ['Loada', 'Runa', 'Runb', 'Runc', 'Rund', 'Loade', 'Rune', 'Runf']

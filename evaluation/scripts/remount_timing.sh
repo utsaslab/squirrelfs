@@ -240,6 +240,8 @@ elif [ $FS = "winefs" ]; then
     fi 
 fi 
 
+echo $TEST
+
 # set up files to scan on remount
 if [[ $TEST == "files" ]]
 then 

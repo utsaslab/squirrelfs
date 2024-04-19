@@ -1,5 +1,5 @@
 #!/bin/bash
-sim_threads=32
+sim_threads=2
 
 MOUNT_POINT=$1
 OUTPUT_DIR=$2
@@ -10,12 +10,15 @@ if [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then
 fi
 sudo mkdir -p $MOUNT_POINT
 sudo mkdir -p $OUTPUT_DIR
+chown -R $USER:$USER $OUTPUT_DIR
+
+sudo umount /dev/pmem0 > /dev/null 2>&1
 
 sudo -E scripts/run_syscall_latency_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 sudo -E scripts/run_filebench_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 sudo -E scripts/run_rocksdb_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 sudo -E scripts/run_lmdb_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 sudo -E scripts/run_linux_checkout.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
-scripts/run_compilation_tests.sh $OUTPUT_DIR
 sudo -E scripts/run_remount_tests.sh $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
+scripts/run_compilation_tests.sh $OUTPUT_DIR
 scripts/run_model_sims.sh $sim_threads $OUTPUT_DIR
