@@ -15,6 +15,7 @@ SquirrelFS is a file system for persistent memory (PM) written in Rust that uses
 4. [Artifact evaluation](#artifact-evaluation)
 5. [Setting up PM](#setting-up-pm)
 6. [Kernel configuration](#kernel-configuration)
+7. [Using rust-analyzer](#using-rust-analyzer)
 
 ## Minimum system requirements
 
@@ -101,6 +102,21 @@ make LLVM=-14 -j <# cores>
 sudo make modules_install install
 ```
 While building the kernel, it may prompt you to select some configuration options interactively. Select the default option by hitting Enter on each prompt.
+
+If you'd like to run `rust-analyzer`, do the following:
+1. `cd` to `squirrelfs/fs/hayleyfs`
+2. Retrieve your `sysroot` by typing `rustc --print sysroot` into the terminal
+3. Open `rust-project.json` and replace `sysroot` with the output of step 2. Additionally, replace `root_module` with the absolute path to the `super.rs` file in `squirrelfs/fs/hayleyfs`
+
+To use `rust-analyzer` with a text editor like VSCode, open your `settings.json` for VSCode and insert the following lines:
+```
+"rust-analyzer.linkedProjects": [
+    "/home/rustfs/squirrelfs/fs/hayleyfs/rust-project.json"
+],
+```
+Finally, replace the path above to the absolute path of the `rust-project.json` file you modified above.
+
+For other text editors, reference this [man page](https://rust-analyzer.github.io/manual.html#non-cargo-based-projects).
 
 ## Kernel setup 
 
