@@ -3,6 +3,7 @@
 SquirrelFS is a file system for persistent memory (PM) written in Rust that uses soft updates for crash consistency. It uses Rust support for the typestate pattern to check that persistent updates adhere to the soft updates rules. It relies on the Rust for Linux build system to compile Rust code in the Linux kernel.
 
 ## Table of contents
+0. [Repository contents](#repository-contents)
 1. [System requirements](#system-requirements)
 2. [Quickstart guide](#quickstart-guide)
     1. [VM setup](#vm-setup)
@@ -16,6 +17,12 @@ SquirrelFS is a file system for persistent memory (PM) written in Rust that uses
 5. [Setting up PM](#setting-up-pm)
 6. [Kernel configuration](#kernel-configuration)
 7. [Using rust-analyzer](#using-rust-analyzer)
+
+## Repository contents 
+1. `dependencies/`: contains scripts to install SquirrelFS, kernel compilation, and Alloy model dependencies.
+2. `evaluation/`: contains benchmark code and helper scripts to run all experiments presented in the SquirrelFS paper. [artifact_evaluation.md](artifact_evaluation.md) contains detailed information on how to run these experiments. 
+3. `linux/`: contains a slightly modified v6.3.0 Linux kernel and the SquirrelFS file system.
+4. `model_checking`: contains the SquirrelFS Alloy model, plus utilities and scripts to check the model and examine the output of such checks.
 
 ## Minimum system requirements
 
@@ -33,16 +40,15 @@ SquirrelFS can be run in a VM or on a baremetal machine.
 This section describes how to download and run SquirrelFS on a pre-made VM with emulated PM. For more detailed instructions on running SquirrelFS on baremetal or a custom-made VM, see below.
 
 ### VM setup
-1. Download the pre-made VM image: `curl -o rustfs.img.tar.gz https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (8GB)
-2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 25GB; may take up to 50GB)
+1. Download the pre-made VM image: `curl -o rustfs.img.tar.gz https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (13GB)
+2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 30GB; may take up to 50GB)
 3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <# cores>`
 4. SSH into the VM using `ssh rustfs@localhost -p 2222`. The username and password are both `rustfs`.
     - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message. Open another terminal window and SSH in; it may take a few seconds before you can connect to the VM. 
 
 ### SquirrelFS setup
 1. `cd squirrelfs` and pull to ensure the local version is up to date.
-    1. **Artifact evaluators**: please ensure that you are on the `artifact_evaluation` branch.
-    2. You will need to create a GitHub SSH key in the VM and add it to your GitHub account to pull from the repository.
+    1. You will need to create a GitHub SSH key in the VM and add it to your GitHub account to pull from the repository.
 2. Run `dependencies/dependencies.sh` to ensure all dependencies are up to date.
 3. Run `cp SQUIRRELFS_CONFIG .config` to use SquirrelFS's kernel configurations.
 4. Build and install the most up-to-date version of the kernel (on a VM with 16GB RAM and 8 cores: ~45 min to compile, ~5 min to install):
@@ -102,21 +108,6 @@ make LLVM=-14 -j <# cores>
 sudo make modules_install install
 ```
 While building the kernel, it may prompt you to select some configuration options interactively. Select the default option by hitting Enter on each prompt.
-
-If you'd like to run `rust-analyzer`, do the following:
-1. `cd` to `squirrelfs/fs/hayleyfs`
-2. Retrieve your `sysroot` by typing `rustc --print sysroot` into the terminal
-3. Open `rust-project.json` and replace `sysroot` with the output of step 2. Additionally, replace `root_module` with the absolute path to the `super.rs` file in `squirrelfs/fs/hayleyfs`
-
-To use `rust-analyzer` with a text editor like VSCode, open your `settings.json` for VSCode and insert the following lines:
-```
-"rust-analyzer.linkedProjects": [
-    "/home/rustfs/squirrelfs/fs/hayleyfs/rust-project.json"
-],
-```
-Finally, replace the path above to the absolute path of the `rust-project.json` file you modified above.
-
-For other text editors, reference this [man page](https://rust-analyzer.github.io/manual.html#non-cargo-based-projects).
 
 ## Kernel setup 
 
