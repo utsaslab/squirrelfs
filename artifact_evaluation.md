@@ -48,12 +48,14 @@ Run `scripts/build_benchmarks.sh` to compile filebench and LMDB and install depe
 
 Each experiment scripts requires some subset of the following arguments:
 1. `mount_point`: the location to mount the file system under test. If you are using the provided machine, we suggest using `/mnt/local_ssd/mnt/pmem/`. 
-2. `output_dir`: the directory to place all output data in. The same directory can be passed to all experiments; each experiment creates subdirectories to keep results organized.
+2. `output_dir`: the directory to place all output data in. The scripts expect a relative path to a subdirectory of `squirrelfs/evaluation` (e.g., using `results` as `output_dir` will put all output in `squirrelfs/evaluation/results`). The same directory can be passed to all experiments; each experiment creates subdirectories to keep results organized.
 3. `pm_device`: the path to the PM device file to use. This will generally be `/dev/pmem0`. 
 
 ### Running all experiments
 
 **Run `scripts/run_all.sh <mount_point> <output_dir> <pm_device>` to run all experiments on SquirrelFS.** It takes approximately 18 hours to run all of the experiments. Each experiment can also be run separately following the instructions below.
+
+We recommend using the following arguments: `scripts/run_all.sh /mnt/pmem output_ae /dev/pmem0`
 
 ### System call latency (15-20 min)
 

@@ -88,7 +88,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = x86_64-pc-linux-gnu
 host_triplet = x86_64-pc-linux-gnu
-bin_PROGRAMS = filebench$(EXEEXT) filebench-sufs$(EXEEXT)
+bin_PROGRAMS = filebench$(EXEEXT)
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
@@ -122,16 +122,6 @@ AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
 am__v_lt_0 = --silent
 am__v_lt_1 = 
-am_filebench_sufs_OBJECTS = eventgen.$(OBJEXT) fb_avl.$(OBJEXT) \
-	fb_localfs.$(OBJEXT) fb_random.$(OBJEXT) fileset.$(OBJEXT) \
-	flowop.$(OBJEXT) flowop_library.$(OBJEXT) gamma_dist.$(OBJEXT) \
-	ipc.$(OBJEXT) misc.$(OBJEXT) multi_client_sync.$(OBJEXT) \
-	parser_gram.$(OBJEXT) parser_lex.$(OBJEXT) procflow.$(OBJEXT) \
-	stats.$(OBJEXT) threadflow.$(OBJEXT) utils.$(OBJEXT) \
-	vars.$(OBJEXT) ioprio.$(OBJEXT) fbtime.$(OBJEXT) \
-	fb_cvar.$(OBJEXT) aslr.$(OBJEXT) cvars/mtwist/mtwist.$(OBJEXT)
-filebench_sufs_OBJECTS = $(am_filebench_sufs_OBJECTS)
-filebench_sufs_DEPENDENCIES =
 AM_V_P = $(am__v_P_$(V))
 am__v_P_ = $(am__v_P_$(AM_DEFAULT_VERBOSITY))
 am__v_P_0 = false
@@ -195,8 +185,8 @@ AM_V_YACC = $(am__v_YACC_$(V))
 am__v_YACC_ = $(am__v_YACC_$(AM_DEFAULT_VERBOSITY))
 am__v_YACC_0 = @echo "  YACC    " $@;
 am__v_YACC_1 = 
-SOURCES = $(filebench_SOURCES) $(filebench_sufs_SOURCES)
-DIST_SOURCES = $(filebench_SOURCES) $(filebench_sufs_SOURCES)
+SOURCES = $(filebench_SOURCES)
+DIST_SOURCES = $(filebench_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive cscopelist-recursive \
 	ctags-recursive dvi-recursive html-recursive info-recursive \
 	install-data-recursive install-dvi-recursive \
@@ -427,23 +417,9 @@ filebench_SOURCES = eventgen.c fb_avl.c fb_localfs.c \
 		    fb_cvar.c fb_cvar.h aslr.c aslr.h \
 		    cvars/mtwist/mtwist.c cvars/mtwist/mtwist.h
 
-filebench_sufs_SOURCES = eventgen.c fb_avl.c fb_localfs.c \
-		    fb_random.c fileset.c flowop.c flowop_library.c \
-		    gamma_dist.c ipc.c misc.c multi_client_sync.c \
-		    parser_gram.y parser_lex.l procflow.c stats.c \
-		    threadflow.c utils.c vars.c ioprio.c \
-		    eventgen.h  fb_random.h  fileset.h  fsplug.h \
-		    ipc.h   multi_client_sync.h  parsertypes.h  stats.h \
-		    utils.h config.h fb_avl.h filebench.h flowop.h gamma_dist.h \
-		    misc.h procflow.h threadflow.h vars.h ioprio.h flag.h \
-		    fbtime.c fbtime.h \
-		    fb_cvar.c fb_cvar.h aslr.c aslr.h \
-		    cvars/mtwist/mtwist.c cvars/mtwist/mtwist.h
-
 EXTRA_DIST = LICENSE
 ACLOCAL_AMFLAGS = -I m4
 AM_YFLAGS = -d
-filebench_sufs_LDADD = -ltcmalloc_minimal -lsufs
 AM_CFLAGS = -Wall -Wno-unknown-pragmas
 all: $(BUILT_SOURCES) config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
@@ -562,10 +538,6 @@ cvars/mtwist/mtwist.$(OBJEXT): cvars/mtwist/$(am__dirstamp) \
 filebench$(EXEEXT): $(filebench_OBJECTS) $(filebench_DEPENDENCIES) $(EXTRA_filebench_DEPENDENCIES) 
 	@rm -f filebench$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(filebench_OBJECTS) $(filebench_LDADD) $(LIBS)
-
-filebench-sufs$(EXEEXT): $(filebench_sufs_OBJECTS) $(filebench_sufs_DEPENDENCIES) $(EXTRA_filebench_sufs_DEPENDENCIES) 
-	@rm -f filebench-sufs$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(filebench_sufs_OBJECTS) $(filebench_sufs_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)

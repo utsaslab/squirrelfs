@@ -39,7 +39,7 @@ $(BINDIR)/t_lmdb: dbb.o t_lmdb.o
 	$(CC) -o $@ $^ -Wl,-Bstatic -llmdb -Wl,-Bdynamic -lsnappy -lm
 
 $(BINDIR)/t_lmdb_arckfs: dbb.o t_lmdb.o
-	$(CC) -o $@ $^ -Wl,-Bstatic -llmdb -Wl,-Bdynamic -lsnappy -lm -lsufs
+	$(CC) -o $@ $^ -Wl,-Bstatic -llmdb -Wl,-Bdynamic -lsnappy -lm
 
 $(BINDIR)/t_mdbx: dbb.o t_mdbx.o
 	$(CC) -o $@ $^ -Wl,-Bstatic -lmdbx -Wl,-Bdynamic -lsnappy -lm
