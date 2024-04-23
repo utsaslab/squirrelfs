@@ -1,0 +1,16 @@
+v3.0,ext4,nova,winefs,squirrelfs
+,2.72,2.74,2.4,2.05
+,2.59,2.31,2.06,2.52
+
+v4.0,ext4,nova,winefs,squirrelfs
+,3.06,3.77,2.59,2.52
+,2.8,3.03,2.83,2.61
+
+v5.0,ext4,nova,winefs,squirrelfs
+,3.97,4.09,3.66,3.61
+,3.48,5.03,3.14,3.7
+
+v6.0,ext4,nova,winefs,squirrelfs
+,6.59,5.21,3.8,3.82
+,4.5,4.52,3.66,7.62
+
