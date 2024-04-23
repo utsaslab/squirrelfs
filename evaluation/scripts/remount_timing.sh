@@ -75,7 +75,7 @@ make_files_until_failure() {
     do 
         touch $MOUNT_POINT/file${1}_$i
         retval=$?
-        dd if=/dev/zero of=$MOUNT_POINT/file${1}_$i bs=$file_size count=1 status=none
+        dd if=/dev/zero of=$MOUNT_POINT/file${1}_$i bs=$file_size count=1 status=none >> /dev/null 2>&1
         i=$((i+1))
     done
     echo "created $i files"
@@ -108,7 +108,7 @@ make_dirs_until_failure() {
     fi
     for i in $(seq 1 $dirs)
     do
-        mkdir $parent/dir${thread}_$i
+        mkdir $parent/dir${thread}_$i >> /dev/null 2>&1
         retval=$?
 
         total_dirs=$((total_dirs+1))
@@ -128,7 +128,7 @@ make_dirs_until_failure() {
 
         for i in $(seq $dirs)
         do 
-            mkdir $path/dir${thread}_$i
+            mkdir $path/dir${thread}_$i >> /dev/null 2>&1
             retval=$?
             total_dirs=$((total_dirs+1))
             if [ $retval -ne 0 ]
@@ -204,14 +204,14 @@ fill_device() {
         retval=$?
         if [ $retval -ne 0 ]
         then 
-            echo "thread $thread ran out of space"
+            # echo "thread $thread ran out of space"
             return 
         fi
-        dd if=/dev/zero of=$parent/file_$i bs=$fill_device_file_size count=1 status=none
+        dd if=/dev/zero of=$parent/file_$i bs=$fill_device_file_size count=1 status=none >> /dev/null 2>&1
         retval=$?
         if [ $retval -ne 0 ]
         then 
-            echo "thread $thread ran out of space"
+            # echo "thread $thread ran out of space"
             return 
         fi
     done
