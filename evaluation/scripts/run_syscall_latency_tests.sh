@@ -8,7 +8,7 @@ echo $MOUNT_POINT
 echo $OUTPUT_DIR 
 echo $PM_DEVICE
 
-if [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+if [ -z $MOUNT_POINT ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ]; then 
     echo "Usage: run_syscall_latency_tests.sh mountpoint output_dir pm_device"
     exit 1
 fi

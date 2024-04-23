@@ -6,7 +6,7 @@ OUTPUT_DIR=$3
 PM_DEVICE=$4
 output_dir=$OUTPUT_DIR
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+if [ -z $FS ] || [ -z $MOUNT_POINT ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ]; then 
     echo "Usage: run_syscall_latency.sh fs mountpoint output_dir pm_device"
     exit 1
 fi

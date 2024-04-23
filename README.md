@@ -42,23 +42,24 @@ This section describes how to download and run SquirrelFS on a pre-made VM with 
 ### VM setup
 1. Download the pre-made VM image: `curl -o rustfs.img.tar.gz https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (13GB)
 2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 30GB; may take up to 50GB)
-3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <# cores>`
-4. SSH into the VM using `ssh rustfs@localhost -p 2222`. The username and password are both `rustfs`.
-    - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message. Open another terminal window and SSH in; it may take a few seconds before you can connect to the VM. 
+3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <# cores>`.  We suggest providing QEMU at minimum 8 cores, and ideally more if possible.
+    - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message.  Leave this terminal running.
+4. Open another terminal window and SSH in using `ssh rustfs@localhost p- 2222`; it may take a few seconds following VM startup before you can connect to the VM.  The username and password are both `rustfs`.
+5. To gracefully shut down the VM, in your SSH session, run `sudo shutdown -h now`.  You will be disconnected from the VM and your QEMU console, opened in step 3, will close as well.
 
 ### SquirrelFS setup
 1. `cd squirrelfs` and pull to ensure the local version is up to date.
     1. You will need to create a GitHub SSH key in the VM and add it to your GitHub account to pull from the repository.
 2. Run `dependencies/dependencies.sh` to ensure all dependencies are up to date.
-3. Run `cp SQUIRRELFS_CONFIG .config` to use SquirrelFS's kernel configurations.
 4. Build and install the most up-to-date version of the kernel (on a VM with 16GB RAM and 8 cores: ~45 min to compile, ~5 min to install):
 ```
 cd linux
+cp SQUIRRELFS_CONFIG .config
 make LLVM=-14 -j <# cores>
 sudo make modules_install install
 ```
-5. Reboot the VM. 
-6. Check that the correct kernel is running; `uname -r` should output `6.3.0-squirrelfs+` or similar. 
+5. Reboot the VM via `sudo shutdown -r now`. 
+6. On reboot, check that the correct kernel is running; `uname -r` should output `6.3.0-squirrelfs+` or similar. 
     - If the output is different, check that the kernel built and installed without errors and ensure GRUB options are set to boot into the correct kernel.
 
 ### Using SquirrelFS

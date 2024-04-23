@@ -47,7 +47,7 @@ Run `scripts/build_benchmarks.sh` to compile filebench and LMDB and install depe
 ### Arguments
 
 Each experiment scripts requires some subset of the following arguments:
-1. `mount_point`: the location to mount the file system under test. If you are using the provided machine, we suggest using `/mnt/local_ssd/mnt/pmem/`. 
+1. `mount_point`: the location to mount the file system under test. If you are using the provided machine, we suggest using `/mnt/local_ssd/mnt/pmem/`.  If you are using the pre-built VM, we suggest `/mnt/pmem`.
 2. `output_dir`: the directory to place all output data in. The scripts expect a relative path to a subdirectory of `squirrelfs/evaluation` (e.g., using `results` as `output_dir` will put all output in `squirrelfs/evaluation/results`). The same directory can be passed to all experiments; each experiment creates subdirectories to keep results organized.
 3. `pm_device`: the path to the PM device file to use. This will generally be `/dev/pmem0`. 
 

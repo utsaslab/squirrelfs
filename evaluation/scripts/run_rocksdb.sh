@@ -14,7 +14,7 @@ REC_COUNT=$6
 NUM_THREADS=$7
 ITERATIONS=$8
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $OP_COUNT ] | [ -z $REC_COUNT ] | [ -z $NUM_THREADS ] | [ -z $ITERATIONS ]; then 
+if [ -z $FS ] || [ -z $MOUNT_POINT ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ] || [ -z $OP_COUNT ] || [ -z $REC_COUNT ] || [ -z $NUM_THREADS ] || [ -z $ITERATIONS ]; then 
     echo "Usage: run_rocksdb.sh fs mountpoint output_dir pm_device operation_count record_count num_threads iterations"
     exit 1
 fi

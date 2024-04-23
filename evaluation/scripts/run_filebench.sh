@@ -7,7 +7,7 @@ OUTPUT_DIR=$4
 PM_DEVICE=$5
 ITERATIONS=$6
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $ITERATIONS ]; then 
+if [ -z $FS ] || [ -z $MOUNT_POINT ] || [ -z $TEST ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ] || [ -z $ITERATIONS ]; then 
     echo "Usage: run_filebench.sh fs mountpoint test output_dir pm_device iterations"
     exit 1
 fi
