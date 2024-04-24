@@ -20,7 +20,7 @@ Minimum recommended environment for running experiments elsewhere (VM or baremet
 2. Intel processor supporing `clwb` or `clflush`/`clflushopt`
 3. 8 cores
 4. 20 GB PM (emulated or real)
-5. 8-16GB DRAM (in addition to DRAM used to emulate PM)
+5. 16GB DRAM (in addition to DRAM used to emulate PM)
 6. Approximately 20GB free storage space
 
 We have set up SquirrelFS and all benchmarks on a machine with these configurations for artifact evaluators. We will provide information about how to access this machine to evaluators during the review period. **Running multiple experiments concurrently on this machine will impact their results, so please coordinate with the other reviewers to ensure experiments do not conflict.**
@@ -29,7 +29,7 @@ If you would prefer to use a different machine, please follow the setup instruct
 - SquirrelFS can be run without `clwb` support on processors that have `clflush`/`clflushopt` support, but this may negatively impact performance, as these instructions are slower. Support for these instructions can be checked by running `lscpu`. 
 - SquirrelFS can be run on emulated or real PM. We suggest using the provided hardware or another machine with Intel Optane DC PMM; if this is not an option, note that running the experiments on PM emulated with DRAM will have different performance results.
 - The filebench workload `webproxy` may experience errors on machines with a relatively low number of threads or less PM. If the test fails, try reducing the value of `nthreads` in `evaluation/filebench/workloads/webproxy.f`.
-- The default configurations of the RocksDB and LMDB benchmarks will run out of space on devices smaller than 128GB. If using a smaller PM device, please reduce the number of operations/records proportionally to the size of the device (e.g., if using 64 GB of PM, use 1/2 of the default values).
+- The default configurations of the RocksDB and LMDB benchmarks will run out of space on devices smaller than 128GB. If using a smaller PM device, please reduce the number of operations/records proportionally to the size of the device (e.g., if using 64 GB of PM, use 1/2 of the default values). Please see the [Modifying experiments](#modifying-experiments) section for info on changing these values.
 - Most experiments can be done with less than 20GB of PM; the exception is the Linux checkout experiment, as the kernel source code takes up approximately 16GB of storage space. 
 
 ## Running experiments
@@ -38,7 +38,7 @@ Scripts to run all experiments and parse and plot their results are included in 
 
 **All of the following commands should be run from within the `evaluation/` directory.**
 
-All experiments use default arguments for iterations, thread count, and/or other experiment-specific parameters that work on the provided machine. Unless otherwise noted, the default values are the same ones we used in the paper. If you are running experiments on a different machine, please see the [Modifying experiments](#modifying-experiments) for info on changing these values.
+All experiments use default arguments for iterations, thread count, and/or other experiment-specific parameters that work on the provided machine. Unless otherwise noted, the default values are the same ones we used in the paper. If you are running experiments on a different machine, please see the [Modifying experiments](#modifying-experiments) section for info on changing these values.
 
 ### Setup
 
