@@ -6,7 +6,7 @@ OUTPUT_DIR=$4
 PM_DEVICE=$5
 ITERATIONS=$6
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $ITERATIONS ]; then 
+if [ -z $FS ] || [ -z $MOUNT_POINT ] || [ -z $TEST ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ] || [ -z $ITERATIONS ]; then
     echo "Usage: remount_timing.sh fs mountpoint test output_dir pm_device iterations"
     exit 1
 fi
@@ -73,7 +73,7 @@ make_files_until_failure() {
     retval=$?
     while [ $retval -eq 0 ]
     do 
-        touch $MOUNT_POINT/file${1}_$i
+        touch $MOUNT_POINT/file${1}_$i >> /dev/null 2>&1
         retval=$?
         dd if=/dev/zero of=$MOUNT_POINT/file${1}_$i bs=$file_size count=1 status=none >> /dev/null 2>&1
         i=$((i+1))
@@ -221,21 +221,21 @@ if [ $FS = "squirrelfs" ]; then
     sudo -E insmod ../linux/fs/squirrelfs/squirrelfs.ko
     retval=$?
     if [ $retval != 0 ]; then 
-        echo "Exiting, error code $?"
+        echo "Exiting, error code $retval"
         exit 1
     fi 
 elif [ $FS = "nova" ]; then 
     sudo -E insmod ../linux/fs/nova/nova.ko
     retval=$?
     if [ $retval != 0 ]; then 
-        echo "Exiting, error code $?"
+        echo "Exiting, error code $retval"
         exit 1
     fi 
 elif [ $FS = "winefs" ]; then 
     sudo -E insmod ../linux/fs/winefs/winefs.ko
     retval=$?
     if [ $retval != 0 ]; then 
-        echo "Exiting, error code $?"
+        echo "Exiting, error code $retval"
         exit 1
     fi 
 fi 

@@ -10,7 +10,7 @@ ITERATIONS=$7
 output_dir=$OUTPUT_DIR
 # iterations=5
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $workload ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $OP_COUNT ] | [ -z $ITERATIONS ]; then 
+if [ -z $FS ] || [ -z $MOUNT_POINT ] || [ -z $workload ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ] || [ -z $OP_COUNT ] || [ -z $ITERATIONS ]; then 
     echo "Usage: run_lmdb.sh fs mountpoint test output_dir pm_device operation_count iterations"
     exit 1
 fi

@@ -7,7 +7,7 @@ OUTPUT_DIR=$4
 PM_DEVICE=$5
 ITERATIONS=$6
 
-if [ -z $FS ] | [ -z $MOUNT_POINT ] | [ -z $TEST ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ] | [ -z $ITERATIONS ]; then 
+if [ -z $FS ] || [ -z $MOUNT_POINT ] || [ -z $TEST ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ] || [ -z $ITERATIONS ]; then 
     echo "Usage: run_filebench.sh fs mountpoint test output_dir pm_device iterations"
     exit 1
 fi
@@ -38,10 +38,10 @@ do
     fi 
 
     if [ $FS = "arckfs" ]; then 
-        sudo -E numactl --cpunodebind=1 --membind=1 filebench/filebench-sufs -f filebench/workloads/$TEST.f > ${filename}/Run$i
+        sudo -E numactl --cpunodebind=1 --membind=1 filebench/filebench-sufs -f tests/$TEST.f > ${filename}/Run$i
         sudo rmmod sufs
     else 
-        sudo -E numactl --membind=0 filebench/filebench -f filebench/workloads/$TEST.f > ${filename}/Run$i
+        sudo -E numactl --membind=0 filebench/filebench -f tests/$TEST.f > ${filename}/Run$i
         sudo umount $PM_DEVICE
         if [ $FS = "squirrelfs" ]; then 
             sudo rmmod squirrelfs

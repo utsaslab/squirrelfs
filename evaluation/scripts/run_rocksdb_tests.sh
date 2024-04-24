@@ -8,7 +8,7 @@ iterations=5
 MOUNT_POINT=$1
 OUTPUT_DIR=$2
 PM_DEVICE=$3
-if [ -z $MOUNT_POINT ] | [ -z $OUTPUT_DIR ] | [ -z $PM_DEVICE ]; then 
+if [ -z $MOUNT_POINT ] || [ -z $OUTPUT_DIR ] || [ -z $PM_DEVICE ]; then 
     echo "Usage: run_rocksdb_tests.sh mountpoint output_dir pm_device"
     exit 1
 fi

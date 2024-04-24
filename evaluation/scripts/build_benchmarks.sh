@@ -1,6 +1,5 @@
 #!/bin/bash 
-
-sudo apt install libsnappy-dev liblmdb-dev python3
+sudo apt install -y libsnappy-dev liblmdb-dev python3 python3-pip python2 automake libtool
 pip3 install matplotlib numpy prettytable
 
 cd filebench 
@@ -11,6 +10,7 @@ automake --add-missing
 autoconf 
 ./configure
 make
+sudo make install
 
 cd ../lmdb/libraries/liblmdb
 make
