@@ -55,9 +55,15 @@ Each experiment scripts requires some subset of the following arguments:
 
 **Run `scripts/run_all.sh <mount_point> <output_dir> <pm_device>` to run all experiments on SquirrelFS.** It takes approximately 18 hours to run all of the experiments. Each experiment can also be run separately following the instructions below.
 
-We recommend using the following arguments: `scripts/run_all.sh /mnt/pmem output_ae /dev/pmem0`
+Recommended arguments:
+- If using the provided machine: `scripts/run_all.sh /mnt/local_ssd/mnt/pmem output_ae /dev/pmem0`
+- If using a VM: `scripts/run_all.sh /mnt/pmem output_ae /dev/pmem0`
 
-### System call latency (15-20 min)
+### Running individual experiments
+
+If you would instead like to run each experiment individually, we include instructions to invoke the helper scripts for each experiment below. `scripts/runall.sh` uses these same scripts.
+
+#### System call latency (15-20 min)
 
 **To run the system call latency tests on all evaluated file systems, run:**
 ```
@@ -71,7 +77,7 @@ sudo -E scripts/run_syscall_latency.sh <fs> <mount_point> <output_dir> <pm_devic
 ```
 where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
-### Filebench (1.5-2 hours)
+#### Filebench (1.5-2 hours)
 
 **To run all filebench workloads, run `sudo -E scripts/run_filebench_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 1.5-2 hours to run all filebench workloads on all file systems on the provided machine.
 
@@ -81,7 +87,7 @@ sudo -E scripts/run_filebench.sh <mount_point> <workload> <fs> <output_dir> <pm_
 ``` 
 where `workload` specifies the filebench workload to run (`fileserver`, `varmail`, `webproxy`, or `webserver`) and `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
-### YCSB workloads on RocksDB (4-4.5 hours)
+#### YCSB workloads on RocksDB (4-4.5 hours)
 
 **To run all YCSB workloads on RocksDB, run** 
 ```
@@ -95,7 +101,7 @@ sudo -E scripts/run_rocksdb.sh <fs> <mount_point> <output_dir> <pm_device> <oper
 ``` 
 where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`). This script runs all tested YCSB workloads by default, as some YCSB workloads depend on each other, but a subset can be selected by commenting out workloads to skip in the script.
 
-### LMDB (~7 hours)
+#### LMDB (~7 hours)
 
 **To run all LMDB workloads, run:**
 ```
@@ -110,7 +116,7 @@ where `workload` specifies the LMDB workload to run (`fillseqbatch`, `fillrandba
 
 **Note**: we used 10 iterations for the paper, but this takes 14-15 hours to run. The provided scripts use 5 iterations by default to reduce the runtime of this experiment.
 
-### Linux checkout (2 hours)
+#### Linux checkout (2 hours)
 
 **To run the Linux checkout experiment on all file systems, run:** 
 ```
@@ -126,7 +132,7 @@ sudo -E scripts/linux_checkout.sh <fs> <mount_point> <output_dir> <pm_device> <i
 ```
 where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
-### Compilation (15 minutes)
+#### Compilation (15 minutes)
 
 **To measure compilation times of all file systems, run:** 
 ```
@@ -140,7 +146,7 @@ scripts/compilation.sh <fs> <iterations>
 ```
 where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 
-### Mount times (1 hour)
+#### Mount times (1 hour)
 
 **To run experiments to measure the mount time of SquirrelFS, run:** 
 ```
@@ -156,7 +162,7 @@ sudo -E scripts/remount_timing.sh <fs> <mount_point> <test> <output_dir> <pm_dev
 ```
 where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`) and `test` specifies which experiment to run (`init`, `empty`, or `fill_device`). The script supports several more experiments, including filling the device with only data files or only directories, but we did not include results from these experiments in the paper. Note that the script only supports automatically running post-crash recovery code for SquirrelFS, as SquirrelFS has a mount-time argument (`force_recovery`) to force recovery code to run on a clean unmount. The other file systems do not have mount-time arguments to force crash recovery and have to be manually modified to make this code run if a crash has not occurred.
 
-### Model checking (30 min)
+#### Model checking (30 min)
 
 Fully checking the Alloy model of SquirrelFS takes weeks and cannot be done within the artifact evaluation period. Instead, we provide a set of simulations to run on the model that produce example traces of various operations that SquirrelFS supports. 
 

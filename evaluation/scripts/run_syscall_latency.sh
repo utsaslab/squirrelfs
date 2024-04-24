@@ -57,11 +57,12 @@ if [ $FS = "arckfs" ]; then
         done 
     done
 else 
+    sudo umount $PM_DEVICE >> /dev/null 2>&1
     sudo ndctl create-namespace -f -e namespace0.0 --mode=fsdax
     tests/syscall_latency $FS $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
 fi
 
-
+sudo umount $PM_DEVICE >> /dev/null 2>&1
 if [ $FS = "squirrelfs" ]; then 
     sudo rmmod squirrelfs
 elif [ $FS = "nova" ]; then 
