@@ -22,7 +22,7 @@ fi
 # Did we remember to install special bits?
 for PROG in numactl java rustc; do
     msg "$PROG"
-    if ! command -v $PROG; then
+    if ! command -v $PROG > /dev/null; then
         err "Missing $PROG on our \$PATH (did you run dependencies.sh?)"
     fi
 done
@@ -32,7 +32,7 @@ LINUX_BASEDIR=../linux
 for FS in nova squirrelfs ext4 winefs; do
     msg "$FS module"
     FS_PATH="$LINUX_BASEDIR"/fs/$FS/$FS.ko
-    if ! test -f $"LINUX_BASEDIR"/fs/$FS/$FS.ko; then
+    if ! test -f $FS_PATH; then
         err "Missing kernel module for $FS at $FS_PATH; did linux build correctly?"
     fi
 done
