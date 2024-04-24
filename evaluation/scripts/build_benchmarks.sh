@@ -10,6 +10,7 @@ automake --add-missing
 autoconf 
 ./configure
 make
+sudo make install
 
 cd ../lmdb/libraries/liblmdb
 make
