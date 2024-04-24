@@ -73,7 +73,7 @@ make_files_until_failure() {
     retval=$?
     while [ $retval -eq 0 ]
     do 
-        touch $MOUNT_POINT/file${1}_$i
+        touch $MOUNT_POINT/file${1}_$i >> /dev/null 2>&1
         retval=$?
         dd if=/dev/zero of=$MOUNT_POINT/file${1}_$i bs=$file_size count=1 status=none >> /dev/null 2>&1
         i=$((i+1))

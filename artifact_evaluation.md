@@ -53,7 +53,7 @@ Each experiment scripts requires some subset of the following arguments:
 
 ### Running all experiments
 
-**Run `scripts/run_all.sh <mount_point> <output_dir> <pm_device>` to run all experiments on SquirrelFS.** It takes approximately 18 hours to run all of the experiments. Each experiment can also be run separately following the instructions below.
+**Run `sudo -E scripts/run_all.sh <mount_point> <output_dir> <pm_device>` to run all experiments on SquirrelFS.** It takes approximately 18 hours to run all of the experiments on the provided machine. Each experiment can also be run separately following the instructions below.
 
 Recommended arguments:
 - If using the provided machine: `scripts/run_all.sh /mnt/local_ssd/mnt/pmem output_ae /dev/pmem0`

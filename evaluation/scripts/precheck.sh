@@ -20,7 +20,7 @@ if [[ "$CWD" != "evaluation" ]]; then
 fi
 
 # Did we remember to install special bits?
-for PROG in numactl java rustc; do
+for PROG in numactl java; do
     msg "$PROG"
     if ! command -v $PROG > /dev/null; then
         err "Missing $PROG on our \$PATH (did you run dependencies.sh?)"
@@ -29,7 +29,7 @@ done
 
 # Have we correctly built all the kernel modules?
 LINUX_BASEDIR=../linux
-for FS in nova squirrelfs ext4 winefs; do
+for FS in nova squirrelfs winefs; do
     msg "$FS module"
     FS_PATH="$LINUX_BASEDIR"/fs/$FS/$FS.ko
     if ! test -f $FS_PATH; then
