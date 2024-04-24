@@ -79,11 +79,16 @@ where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or
 
 #### Filebench (1.5-2 hours)
 
-**To run all filebench workloads, run `sudo -E scripts/run_filebench_tests.sh <mount_point> <output_dir> <pm_device>`.** It takes approximately 1.5-2 hours to run all filebench workloads on all file systems on the provided machine.
+**To run all filebench workloads, run:**
+```
+sudo -E scripts/run_filebench_tests.sh <mount_point> <output_dir> <pm_device>
+```
+
+It takes approximately 1.5-2 hours to run all filebench workloads on all file systems on the provided machine.
 
 To specify the workload and file system to test, run 
 ```
-sudo -E scripts/run_filebench.sh <mount_point> <workload> <fs> <output_dir> <pm_device> <iterations>
+sudo -E scripts/run_filebench.sh <mount_point> <fs>  <workload> <output_dir> <pm_device> <iterations>
 ``` 
 where `workload` specifies the filebench workload to run (`fileserver`, `varmail`, `webproxy`, or `webserver`) and `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or `ext4`).
 

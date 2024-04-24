@@ -42,7 +42,7 @@ This section describes how to download and run SquirrelFS on a pre-made VM with 
 ### VM setup
 1. Download the pre-made VM image: `curl -o rustfs.img.tar.gz https://www.cs.utexas.edu/~hleblanc/rustfs.img.tar.gz` (13GB)
 2. Untar the VM image: `tar -xf rustfs.img.tar.gz` (expands to about 30GB; may take up to 50GB)
-3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 8G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <# cores>`.  We suggest providing QEMU at minimum 8 cores, and ideally more if possible.
+3. The VM can now be booted using `qemu-system-x86_64 -boot c -m 30G -hda rustfs.img -enable-kvm -net nic -net user,hostfwd=tcp::2222-:22 -cpu host -nographic -smp <# cores>`.  We suggest providing QEMU at minimum 8 cores, and ideally more if possible.
     - After running the boot command, the VM will appear to hang with a `Booting from Hard Disk...` message.  Leave this terminal running.
 4. Open another terminal window and SSH in using `ssh rustfs@localhost p- 2222`; it may take a few seconds following VM startup before you can connect to the VM.  The username and password are both `rustfs`.
 5. To gracefully shut down the VM, in your SSH session, run `sudo shutdown -h now`.  You will be disconnected from the VM and your QEMU console, opened in step 3, will close as well.

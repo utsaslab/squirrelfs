@@ -38,10 +38,10 @@ do
     fi 
 
     if [ $FS = "arckfs" ]; then 
-        sudo -E numactl --cpunodebind=1 --membind=1 filebench/filebench-sufs -f filebench/workloads/$TEST.f > ${filename}/Run$i
+        sudo -E numactl --cpunodebind=1 --membind=1 filebench/filebench-sufs -f tests/$TEST.f > ${filename}/Run$i
         sudo rmmod sufs
     else 
-        sudo -E numactl --membind=0 filebench/filebench -f filebench/workloads/$TEST.f > ${filename}/Run$i
+        sudo -E numactl --membind=0 filebench/filebench -f tests/$TEST.f > ${filename}/Run$i
         sudo umount $PM_DEVICE
         if [ $FS = "squirrelfs" ]; then 
             sudo rmmod squirrelfs
