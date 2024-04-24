@@ -1,6 +1,8 @@
 #!/bin/bash
 sim_threads=2
 
+$(dirname "$0")/precheck.sh || exit 1
+
 MOUNT_POINT=$1
 OUTPUT_DIR=$2
 PM_DEVICE=$3
