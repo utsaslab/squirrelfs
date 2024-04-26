@@ -9,6 +9,7 @@ KERNEL_SOURCE=../../linux
 
 output_dir=$OUTPUT_DIR/$FS/compilation
 sudo mkdir -p $output_dir
+sudo chown -R "${SUDO_USER:-$USER}":"${SUDO_USER:-$USER}" $output_dir
 if [ $FS = "nova" ] || [ $FS = "squirrelfs" ] || [ $FS = "winefs" ]
 then
     cd ../linux/fs/$FS 

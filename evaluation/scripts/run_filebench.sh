@@ -17,6 +17,8 @@ mkdir -p $MOUNT_POINT
 filename=$OUTPUT_DIR/${FS}/filebench/${TEST}
 mkdir -p $filename
 
+cp ./filebench/workloads/$TEST.f tests/$TEST.f
+sed -i -e "s@$dir=/tmp@$dir=$MOUNT_POINT@" tests/$TEST.f
 
 echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 for i in $(seq $ITERATIONS)

@@ -143,7 +143,7 @@ where `fs` specifies the file system to test (`squirrelfs`, `nova,` `winefs`, or
 ```
 scripts/run_compilation_tests.sh <output_dir>
 ```
-It takes approximately 15 minutes to run these experiments on all file systems on the provided machine.
+It takes approximately 15 minutes to run these experiments on all file systems on the provided machine. *Note:* Do not run this script with `sudo`.
 
 To run the experiment on a single file system, run 
 ```
