@@ -180,8 +180,7 @@ fn squirrelfs_fallocate(
     len: i64,
 ) -> Result<u64> {  
     let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
-    
-    // let pi_info = pi.get_inode_info()?;
+    let pi_info = pi.get_inode_info()?;
     let initial_size: u64 = pi.get_size() as u64;
 
     /* 
@@ -285,9 +284,23 @@ fn squirrelfs_fallocate(
     if falloc_fl_collapse_range {
                 
         
-        
 
-    }   
+        /*
+            Part 2
+            - Take all data pages after offset + len and modify their respective headers by subtracting len
+            from each page's offset
+         */
+
+        
+        // We should operate on page aligned boundaries
+        let len_to_shift = len_u64;
+        let page_list = DataPageListWrapper::get_data_page_list(pi_info, len_u64, offset_u64)?;
+        let page_list = match page_list {
+            Ok(page_list) => page_list
+        };
+
+        page_list.subtract_len_from_page_headers(sbi, len_to_shift);
+    } 
 
 
 

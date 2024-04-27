@@ -2050,6 +2050,29 @@ impl DataPageListWrapper<Clean, Writeable> {
         ))
     }
 
+
+    fn subtract_len_from_page_headers(
+        self,
+        sbi: &SbInfo,
+        len: u64
+    ) {
+        let mut page_list = self.get_page_list_cursor();
+        let mut page = page_list.current();
+        while page.is_some() {
+            if let Some(page) = page {
+                let page_no = page.get_page_no();
+                // page_list.move_next(); // Is this needed?
+                let mut data = unsafe { page_no_to_data_header(sbi, page_no) };
+                match data {
+                    Ok(data_page_header) => {
+                        data_page_header.offset -= len;
+                    }
+                }
+            }
+            page = page_list.current();
+        }
+    }
+
     // persistence typestate breaks down a little here, since someone could have
     // (and likely has) written to the msync'ed pages and left them in a dirty
     // and/or inflight state. we can't represent individual page typestates and
