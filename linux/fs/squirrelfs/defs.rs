@@ -25,6 +25,7 @@ pub(crate) const MAX_FILENAME_LEN: usize = 110;
 pub(crate) const MAX_PAGES: u64 = u64::MAX;
 pub(crate) const MAX_LINKS: u16 = u16::MAX;
 pub(crate) const DENTRIES_PER_PAGE: usize = 32;
+pub(crate) const MAX_FILE_SIZE: u64 = 1000000; // TODO: get a correct number for this.
 
 /// Reserved pages
 #[allow(dead_code)]
