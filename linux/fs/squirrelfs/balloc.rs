@@ -16,10 +16,11 @@ use core::{
 use kernel::prelude::*;
 use kernel::{
     io_buffer::{IoBufferReader, IoBufferWriter},
-    linked_list::{Cursor, List},
+    linked_list::List,
     linked_list::{GetLinks, Links},
     rbtree::RBTree,
     sync::{smutex::Mutex, Arc},
+    
 };
 
 pub(crate) trait PageAllocator {
@@ -260,7 +261,9 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
     fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
-            let mut page_list = pages.get_page_list_cursor();
+            let page_list = Arc::clone(&pages.pages);
+            let page_list = page_list.lock();
+            let mut page_list = page_list.cursor_front();
             let mut page = page_list.current();
             while page.is_some() {
                 // janky syntax to deal with the fact that page_list.current() returns an Option
@@ -292,7 +295,10 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
 
     fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
-            let mut page_list = pages.get_page_list_cursor();
+            // let mut page_list = pages.get_page_list_cursor();
+            let page_list = Arc::clone(&pages.pages);
+            let page_list = page_list.lock();
+            let mut page_list = page_list.cursor_front();
             let mut page = page_list.current();
             while page.is_some() {
                 if let Some(page) = page {
@@ -845,33 +851,6 @@ impl<'a, Op> DirPageWrapper<'a, Dirty, Op> {
     }
 }
 
-// impl<'a> DirPageWrapper<'a, Clean, Recovery> {
-//     pub(crate) unsafe fn get_recovery_page(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
-//         // use the unchecked variant because the pages may be invalid
-//         let ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page_no)? };
-//         Ok(DirPageWrapper {
-//             state: PhantomData,
-//             op: PhantomData,
-//             page_no: page_no,
-//             page: CheckedPage {
-//                 drop_type: DropType::Panic,
-//                 page: Some(ph),
-//             },
-//         })
-//     }
-
-//     pub(crate) fn recovery_dealloc(mut self, sbi: &SbInfo) -> DirPageWrapper<'a, Dirty, Free> {
-//         unsafe { self.page.dealloc(sbi) };
-//         let page = self.take_and_make_drop_safe();
-//         DirPageWrapper {
-//             state: PhantomData,
-//             op: PhantomData,
-//             page_no: self.page_no,
-//             page,
-//         }
-//     }
-// }
-
 impl DirPageListWrapper<Clean, Recovery> {
     pub(crate) unsafe fn get_recovery_page(sbi: &SbInfo, page_no: PageNum) -> Result<Self> {
         // obtain the page descriptor *just* to determine that it is a valid type
@@ -882,7 +861,7 @@ impl DirPageListWrapper<Clean, Recovery> {
         Ok(DirPageListWrapper {
             state: PhantomData,
             op: PhantomData,
-            pages,
+            pages: Arc::try_new(Mutex::new(pages))?,
         })
     }
 
@@ -894,7 +873,9 @@ impl DirPageListWrapper<Clean, Recovery> {
         sbi: &SbInfo,
     ) -> Result<DirPageListWrapper<InFlight, Free>> {
         // lists in recovery typestate only have one page
-        let pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let pages = pages.cursor_front();
         let page = pages.current();
         if let Some(page) = page {
             let ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page.get_page_no())? };
@@ -948,20 +929,10 @@ impl<'a, State, Op> Drop for DirPageWrapper<'a, State, Op> {
 pub(crate) struct DirPageListWrapper<State, Op> {
     state: PhantomData<State>,
     op: PhantomData<Op>,
-    pages: List<Box<LinkedPage>>,
+    pages: Arc<Mutex<List<Box<LinkedPage>>>>,
 }
 
 impl<State, Op> PmObjWrapper for DirPageListWrapper<State, Op> {}
-
-impl<State, Op> DirPageListWrapper<State, Op> {
-    // pub(crate) fn get_page_list(&self) -> &List<Box<LinkedPage>> {
-    //     &self.pages
-    // }
-
-    pub(crate) fn get_page_list_cursor(&self) -> Cursor<'_, Box<LinkedPage>> {
-        self.pages.cursor_front()
-    }
-}
 
 impl DirPageListWrapper<Clean, ToUnmap> {
     // TODO: this should require an inode in the proper state
@@ -975,12 +946,14 @@ impl DirPageListWrapper<Clean, ToUnmap> {
         Ok(Self {
             state: PhantomData,
             op: PhantomData,
-            pages: v,
+            pages: Arc::try_new(Mutex::new(v))?,
         })
     }
 
     pub(crate) fn unmap(self, sbi: &SbInfo) -> Result<DirPageListWrapper<InFlight, ClearIno>> {
-        let mut pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut pages = pages.cursor_front();
         let mut page = pages.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -1001,7 +974,9 @@ impl DirPageListWrapper<Clean, ToUnmap> {
 
 impl DirPageListWrapper<Clean, ClearIno> {
     pub(crate) fn dealloc(self, sbi: &SbInfo) -> Result<DirPageListWrapper<InFlight, Dealloc>> {
-        let mut pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut pages = pages.cursor_front();
         let mut page = pages.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -1015,7 +990,7 @@ impl DirPageListWrapper<Clean, ClearIno> {
         Ok(DirPageListWrapper {
             state: PhantomData,
             op: PhantomData,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
     }
 }
@@ -1025,7 +1000,7 @@ impl DirPageListWrapper<Clean, Dealloc> {
         DirPageListWrapper {
             state: PhantomData,
             op: PhantomData,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         }
     }
 }
@@ -1036,7 +1011,7 @@ impl<Op> DirPageListWrapper<InFlight, Op> {
         DirPageListWrapper {
             state: PhantomData,
             op: PhantomData,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         }
     }
 }
@@ -1805,7 +1780,10 @@ pub(crate) struct DataPageListWrapper<State, Op> {
     offset: u64, // offset at which the contiguous chunk of pages starts
     // TODO: what structure should we use here? vec has a size limit
     num_pages: u64,
-    pages: List<Box<LinkedPage>>,
+    // this doesn't really need a mutex, but we use reference counting
+    // to help manage the list as it's moved between different typestates,
+    // and Rc is not currently available
+    pages: Arc<Mutex<List<Box<LinkedPage>>>>,
 }
 
 impl<State, Op> PmObjWrapper for DataPageListWrapper<State, Op> {}
@@ -1815,14 +1793,12 @@ impl<State, Op> DataPageListWrapper<State, Op> {
         self.num_pages
     }
 
-    pub(crate) fn get_page_list_cursor(&self) -> Cursor<'_, Box<LinkedPage>> {
-        self.pages.cursor_front()
-    }
-
     // returns the number of PHYSICALLY contiguous pages from the initial offset
     // in this list to use when handling mmap faults
     pub(crate) fn num_contiguous_pages_from_start(&self) -> u64 {
-        let mut pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut pages = pages.cursor_front();
         let mut page = pages.current();
         let mut prev_page_no;
         let mut num_pages = 0;
@@ -1851,7 +1827,9 @@ impl<State, Op> DataPageListWrapper<State, Op> {
 
     pub(crate) fn first_page_virt_addr(&self) -> Option<*mut ffi::c_void> {
         // get first page's page no
-        let pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let pages = pages.cursor_front();
         let page = pages.current();
         if let Some(page) = page {
             let page_no = page.get_page_no();
@@ -1871,16 +1849,18 @@ impl DataPageListWrapper<Clean, Start> {
     // allocates pages to represent a contiguous chunk of a file (the pages
     // themselves may not be physically contiguous)
     pub(crate) fn allocate_pages<'a>(
-        mut self,
+        self,
         sbi: &'a SbInfo,
         pi_info: &SquirrelFsRegInodeInfo,
         no_pages: usize,
         mut offset: u64,
     ) -> Result<DataPageListWrapper<InFlight, Alloc>> {
+        let pages = Arc::clone(&self.pages);
+        let mut pages = pages.lock();
         for _ in 0..no_pages {
             let (ph, page_no) = unsafe { DataPageHeader::alloc(sbi, Some(offset))? };
             let boxed_page_info = Box::try_new(LinkedPage::new(page_no))?;
-            self.pages.push_back(boxed_page_info);
+            pages.push_back(boxed_page_info);
             squirrelfs_flush_buffer(ph, mem::size_of::<DataPageHeader>(), false);
             // TODO: don't do this on every iteration - lot of lock acquisition
             pi_info.insert_page_iterator(offset, page_no)?;
@@ -1892,7 +1872,7 @@ impl DataPageListWrapper<Clean, Start> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages + no_pages_u64,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
     }
 }
@@ -1903,7 +1883,9 @@ impl DataPageListWrapper<Clean, Alloc> {
         sbi: &'a SbInfo,
         ino: InodeNum,
     ) -> Result<DataPageListWrapper<InFlight, Writeable>> {
-        let mut pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut pages = pages.cursor_front();
         let mut page = pages.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -1922,7 +1904,7 @@ impl DataPageListWrapper<Clean, Alloc> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
     }
 }
@@ -1954,7 +1936,7 @@ impl DataPageListWrapper<Clean, Writeable> {
                         op: PhantomData,
                         offset: first_page_offset,
                         num_pages,
-                        pages,
+                        pages: Arc::try_new(Mutex::new(pages))?,
                     }));
                 }
             };
@@ -1975,7 +1957,7 @@ impl DataPageListWrapper<Clean, Writeable> {
             op: PhantomData,
             offset: first_page_offset,
             num_pages,
-            pages,
+            pages: Arc::try_new(Mutex::new(pages))?,
         }))
     }
 
@@ -1994,7 +1976,10 @@ impl DataPageListWrapper<Clean, Writeable> {
         let mut bytes_written = 0;
         let write_size = len;
 
-        let mut page_list = self.get_page_list_cursor();
+        let page_list = Arc::clone(&self.pages);
+        let page_list = page_list.lock();
+
+        let mut page_list = page_list.cursor_front();
         let mut page = page_list.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -2045,7 +2030,7 @@ impl DataPageListWrapper<Clean, Writeable> {
                 op: PhantomData,
                 offset: self.offset,
                 num_pages: self.num_pages,
-                pages: self.pages,
+                pages: Arc::clone(&self.pages),
             },
         ))
     }
@@ -2059,7 +2044,9 @@ impl DataPageListWrapper<Clean, Writeable> {
     // TODO: this is done in a kind of unsafe way with direct flush and fence. make it safer
     pub(crate) fn msync_pages(self, sbi: &SbInfo) -> Result<DataPageListWrapper<Clean, Msynced>> {
         // go through the list, obtain each page, flush its cache lines
-        let mut page_list = self.get_page_list_cursor();
+        let page_list = Arc::clone(&self.pages);
+        let page_list = page_list.lock();
+        let mut page_list = page_list.cursor_front();
         let mut page = page_list.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -2079,8 +2066,31 @@ impl DataPageListWrapper<Clean, Writeable> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
+    }
+}
+
+impl<S> DataPageListWrapper<Clean, S> {
+    // Applies the given closure for each page number in the list.
+    // Since the closure is only given page numbers, it cannot 
+    // modify the contents of the data page list itself.
+    pub(crate) fn for_each_page<F>(&self, mut f: F) -> Result<()>
+        where 
+            F: FnMut(PageNum) -> Result<()>      
+    {
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut cursor = pages.cursor_front();
+        let mut current = cursor.current();
+        while current.is_some() {
+            if let Some(current) = current {
+                f(current.get_page_no())?;
+            }
+            cursor.move_next();
+            current = cursor.current();
+        }
+        Ok(())
     }
 }
 
@@ -2100,7 +2110,9 @@ impl<S: CanWrite> DataPageListWrapper<Clean, S> {
         let mut bytes_written = 0;
         let write_size = len;
 
-        let mut page_list = self.get_page_list_cursor();
+        let page_list = Arc::clone(&self.pages);
+        let page_list = page_list.lock();
+        let mut page_list = page_list.cursor_front();
         let mut page = page_list.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -2172,7 +2184,7 @@ impl<S: CanWrite> DataPageListWrapper<Clean, S> {
                 op: PhantomData,
                 offset: self.offset,
                 num_pages: self.num_pages,
-                pages: self.pages,
+                pages: Arc::clone(&self.pages),
             },
         ))
     }
@@ -2234,7 +2246,7 @@ impl DataPageListWrapper<Clean, ToUnmap> {
             op: PhantomData,
             offset: first_page_offset,
             num_pages,
-            pages,
+            pages: Arc::try_new(Mutex::new(pages))?,
         })
     }
 
@@ -2253,12 +2265,14 @@ impl DataPageListWrapper<Clean, ToUnmap> {
             op: PhantomData,
             offset: 0,
             num_pages: pi_info.get_num_pages(),
-            pages: new_page_list,
+            pages: Arc::try_new(Mutex::new(new_page_list))?,
         })
     }
 
     pub(crate) fn unmap(self, sbi: &SbInfo) -> Result<DataPageListWrapper<InFlight, ClearIno>> {
-        let mut pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut pages = pages.cursor_front();
         let mut page = pages.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -2274,14 +2288,16 @@ impl DataPageListWrapper<Clean, ToUnmap> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
     }
 }
 
 impl DataPageListWrapper<Clean, ClearIno> {
     pub(crate) fn dealloc(self, sbi: &SbInfo) -> Result<DataPageListWrapper<InFlight, Dealloc>> {
-        let mut pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let mut pages = pages.cursor_front();
         let mut page = pages.current();
         while page.is_some() {
             if let Some(page) = page {
@@ -2297,7 +2313,7 @@ impl DataPageListWrapper<Clean, ClearIno> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
     }
 }
@@ -2309,7 +2325,7 @@ impl DataPageListWrapper<Clean, Dealloc> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         }
     }
 }
@@ -2326,7 +2342,7 @@ impl DataPageListWrapper<Clean, Recovery> {
             op: PhantomData,
             offset: 0, // the page may not have an offset so we ignore this value in Recovery typestate
             num_pages: 1,
-            pages,
+            pages: Arc::try_new(Mutex::new(pages))?,
         })
     }
 
@@ -2338,7 +2354,9 @@ impl DataPageListWrapper<Clean, Recovery> {
         sbi: &SbInfo,
     ) -> Result<DataPageListWrapper<InFlight, Free>> {
         // lists in recovery typestate only have one page
-        let pages = self.pages.cursor_front();
+        let pages = Arc::clone(&self.pages);
+        let pages = pages.lock();
+        let pages = pages.cursor_front();
         let page = pages.current();
         if let Some(page) = page {
             let ph = unsafe { unchecked_new_page_no_to_data_header(sbi, page.get_page_no())? };
@@ -2349,7 +2367,7 @@ impl DataPageListWrapper<Clean, Recovery> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         })
     }
 }
@@ -2362,7 +2380,7 @@ impl<Op> DataPageListWrapper<InFlight, Op> {
             op: PhantomData,
             offset: self.offset,
             num_pages: self.num_pages,
-            pages: self.pages,
+            pages: Arc::clone(&self.pages),
         }
     }
 }

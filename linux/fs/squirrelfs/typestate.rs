@@ -1,33 +1,22 @@
 /// Zero-sized types for persistence state
-#[derive(Debug)]
 pub(crate) struct Dirty {}
-#[derive(Debug)]
 pub(crate) struct InFlight {}
-#[derive(Debug)]
 pub(crate) struct Clean {}
 
 // TODO: maybe have op-specific complete states?
 
 /// Zero-sized types for operation state
-#[derive(Debug)]
 pub(crate) struct Start {}
-#[derive(Debug)]
 pub(crate) struct Free {}
-#[derive(Debug)]
 pub(crate) struct Alloc {}
 pub(crate) struct Zeroed {}
-#[derive(Debug)]
 pub(crate) struct Init {}
 pub(crate) struct IncLink {}
-#[derive(Debug)]
 pub(crate) struct Complete {}
-#[derive(Debug)]
 pub(crate) struct Writeable {}
-#[derive(Debug)]
 pub(crate) struct Written {}
 pub(crate) struct IncSize {}
 pub(crate) struct DecSize {}
-#[derive(Debug)]
 pub(crate) struct ClearIno {}
 pub(crate) struct DecLink {}
 pub(crate) struct Dealloc {}

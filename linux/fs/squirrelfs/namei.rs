@@ -1194,7 +1194,7 @@ fn rename_new_dentry_file_inode<'a>(
     set_and_init_rename_ptr_file_inode(sbi, src_dentry, dst_dentry, rename_inode, dst_parent_inode)
 }
 
-fn set_and_init_rename_ptr_file_inode<'a, S: StartOrAlloc + core::fmt::Debug>(
+fn set_and_init_rename_ptr_file_inode<'a, S: StartOrAlloc>(
     sbi: &'a SbInfo,
     src_dentry: DentryWrapper<'a, Clean, Start>,
     dst_dentry: DentryWrapper<'a, Clean, S>,

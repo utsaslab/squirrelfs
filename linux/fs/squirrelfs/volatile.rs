@@ -71,6 +71,12 @@ pub(crate) struct InoDentryTree {
     map: Arc<Mutex<RBTree<InodeNum, RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>>>>,
 }
 
+impl Drop for InoDentryTree {
+    fn drop(&mut self) {
+        pr_info!("dropping ino dentry tree\n");
+    }
+}
+
 impl InoDentryTree {
     pub(crate) fn new() -> Result<Self> {
         Ok(Self {
@@ -243,17 +249,12 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     fn insert_pages<S: WrittenTo>(&self, page_list: DataPageListWrapper<Clean, S>) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
-        let mut cursor = page_list.get_page_list_cursor();
-        let mut current = cursor.current();
         let mut offset = page_list.get_offset();
-        while current.is_some() {
-            if let Some(current) = current {
-                pages.try_insert(offset, current.get_page_no())?;
-            }
-            cursor.move_next();
-            current = cursor.current();
+        page_list.for_each_page(|x| {
+            pages.try_insert(offset, x)?;
             offset += SQUIRRELFS_PAGESIZE;
-        }
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -281,14 +282,11 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Free>) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
-        let mut cursor = page_list.get_page_list_cursor();
-        let mut current = cursor.current();
-        while current.is_some() {
-            if let Some(current) = current {
-                pages.remove(&current);
-            }
-            cursor.move_next();
-            current = cursor.current();
+        let mut offset = page_list.get_offset();
+        let num_pages = page_list.len();
+        for _ in 0..num_pages {
+            pages.remove(&offset);
+            offset += SQUIRRELFS_PAGESIZE;
         }
         Ok(())
     }
