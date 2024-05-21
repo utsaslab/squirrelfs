@@ -1,6 +1,6 @@
 # Artifact evaluation
 
-This document describes how to reproduce the experiments described in the SquirrelFS paper. To reproduce the results provided in the paper, please ensure you are on the `artifact_evaluation` branch; SquirrelFS is under continued development, and this branch represents a snapshot of the system at the time the paper was submitted.
+This document describes how to reproduce the experiments described in the SquirrelFS paper. 
 
 ## Table of contents
 1. [Evaluation environment](#evaluation-environment)
