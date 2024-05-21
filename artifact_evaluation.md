@@ -61,7 +61,7 @@ Recommended arguments:
 
 ### Running individual experiments
 
-If you would instead like to run each experiment individually, we include instructions to invoke the helper scripts for each experiment below. `scripts/runall.sh` uses these same scripts.
+If you would instead like to run each experiment individually, we include instructions to invoke the helper scripts for each experiment below. `scripts/run_all.sh` uses these same scripts.
 
 #### System call latency (15-20 min)
 
