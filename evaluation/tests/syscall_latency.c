@@ -54,7 +54,7 @@ long calculate_latency(struct timeval tv_start, struct timeval tv_end)
     return end - start;
 }
 
-int measure_mkdir(char *mount_type, char *mount_point, char *pm_device, char *output_path)
+int measure_mkdir(char *mount_type, char *mount_point, char *pm_device, char *output_path, int verbose)
 {
     int ret;
     FILE *fp;
@@ -85,13 +85,18 @@ int measure_mkdir(char *mount_type, char *mount_point, char *pm_device, char *ou
         for (int j = 0; j < OP_ITERATIONS; j++)
         {
             sprintf(target, "%s/%s%d", mount_point, file_name, j);
-
+            if (verbose) {
+                printf("creating %s\n", target);
+            }
             gettimeofday(&tv_start, NULL);
             ret = mkdir(target, 0777);
             gettimeofday(&tv_end, NULL);
             if (ret < 0)
             {
                 perror("mkdir");
+                if (verbose) {
+                    printf("failed creating %s\n", target);
+                }
                 unmountfs(mount_point);
                 return ret;
             }
@@ -849,6 +854,7 @@ int measure_rename(char *mount_type, char *mount_point, char *pm_device, char *o
 int main(int argc, void *argv[])
 {
     int ret;
+    int verbose = 0;
     char *fs_type;
     char *mount_type;
     char *output_dir;
@@ -867,6 +873,9 @@ int main(int argc, void *argv[])
     mount_point = (char *)argv[2];
     output_dir = (char *)argv[3];
     pm_device = (char *)argv[4];
+    if (argc == 6 && strcmp((char*)argv[5], "-v") == 0) {
+        verbose = 1;
+    }
 
     if (strcmp(fs_type, "squirrelfs") == 0)
     {
@@ -879,7 +888,7 @@ int main(int argc, void *argv[])
 
     sprintf(output_path, "%s/%s/syscall_latency", output_dir, fs_type);
 
-    ret = measure_mkdir(mount_type, mount_point, pm_device, output_path);
+    ret = measure_mkdir(mount_type, mount_point, pm_device, output_path, verbose);
     if (ret < 0)
     {
         return ret;

@@ -4,6 +4,7 @@ FS=$1
 MOUNT_POINT=$2
 OUTPUT_DIR=$3
 PM_DEVICE=$4
+VERBOSE=$5
 output_dir=$OUTPUT_DIR
 
 cleanup() {
@@ -74,7 +75,7 @@ if [ $FS = "arckfs" ]; then
 else
     sudo umount $PM_DEVICE >> /dev/null 2>&1
     sudo ndctl create-namespace -f -e namespace0.0 --mode=fsdax
-    tests/syscall_latency $FS $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE
+    tests/syscall_latency $FS $MOUNT_POINT $OUTPUT_DIR $PM_DEVICE $VERBOSE
 fi
 
 cleanup
