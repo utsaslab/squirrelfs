@@ -44,6 +44,8 @@ All experiments use default arguments for iterations, thread count, and/or other
 
 Run `scripts/build_benchmarks.sh` to compile filebench and LMDB and install dependencies required by the evaluation scripts. All other experiment scripts use pre-built binaries or compile the required tests. 
 
+**Please also create an SSH key in `~/.ssh/id_ed25519` and add it to your GitHub account.** One of the experiments clones a repository from GitHub and requires a key to complete this operation.
+
 ### Arguments
 
 Each experiment scripts requires some subset of the following arguments:
