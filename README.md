@@ -2,6 +2,20 @@
 
 SquirrelFS is a file system for persistent memory (PM) written in Rust that uses soft updates for crash consistency. It uses Rust support for the typestate pattern to check that persistent updates adhere to the soft updates rules. It relies on the Rust for Linux build system to compile Rust code in the Linux kernel.
 
+If you use SquirrelFS, please cite the following paper:
+
+```
+@inproceedings {osdi24-squirrelfs,
+author = {Hayley LeBlanc and Nathan Taylor and James Bornholt and Vijay Chidambaram},
+title = {{SquirrelFS}: using the Rust compiler to check file-system crash consistency},
+booktitle = {18th USENIX Symposium on Operating Systems Design and Implementation (OSDI 24)},
+year = {2024},
+url =  {https://www.usenix.org/conference/osdi24/presentation/leblanc},
+publisher = {USENIX Association},
+month = jul,
+}
+```
+
 ## Table of contents
 0. [Repository contents](#repository-contents)
 1. [System requirements](#system-requirements)
