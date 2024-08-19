@@ -1,0 +1,18 @@
+Filebench Version 1.5-alpha3
+0.000: Allocated 177MB of shared memory
+0.386: Web proxy-server Version 3.0 personality successfully loaded
+0.386: Populating and pre-allocating filesets
+0.401: bigfileset populated: 10000 files, avg. dir. width = 1000000, avg. dir. depth = 0.7, 0 leafdirs, 156.250MB total size
+0.401: Removing bigfileset tree (if exists)
+0.415: Pre-allocating directories in bigfileset tree
+0.416: Pre-allocating files in bigfileset tree
+0.922: Waiting for pre-allocation to finish (in case of a parallel pre-allocation)
+0.922: Population and pre-allocation of filesets completed
+0.922: Starting 1 proxycache instances
+1.924: Running...
+2.037: Failed to open file 9021, /sufs/bigfileset/00000001/00009022, with status 18: Success
+2.037: flowop openfile2 failed to open file 00009022
+2.037: proxycache-13: flowop openfile2-1 failed
+2.924: Run took 1 seconds...
+2.924: NO VALID RESULTS! Filebench run terminated prematurely
+2.924: Shutting down processes

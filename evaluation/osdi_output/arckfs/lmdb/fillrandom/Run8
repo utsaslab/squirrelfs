@@ -1,0 +1,24 @@
+LMDB: version LMDB 0.9.70: (December 19, 2015)
+Date:	   Fri Jan 19 01:31:03 2024
+CPU:		64 * Intel(R) Xeon(R) Silver 4314 CPU @ 2.40GHz
+CPUCache:   24576 KB
+Keys:	   16 bytes each
+Values:	 100 bytes each (50 bytes after compression)
+Entries:	1000000
+RawSize:	110.6 MB (estimated)
+FileSize:   62.9 MB (estimated)
+------------------------------------------------
+fillrandom    :       1.616 micros/op 618760 ops/sec;  68.5 MB/s
+116520	/tmp/dbbench-0/lmdb
+LMDB: version LMDB 0.9.70: (December 19, 2015)
+Date:	   Fri Jan 19 01:54:30 2024
+CPU:		64 * Intel(R) Xeon(R) Silver 4314 CPU @ 2.40GHz
+CPUCache:   24576 KB
+Keys:	   16 bytes each
+Values:	 100 bytes each (50 bytes after compression)
+Entries:	100000000
+RawSize:	11062.6 MB (estimated)
+FileSize:   6294.3 MB (estimated)
+------------------------------------------------
+fillrandom    :       2.769 micros/op 361183 ops/sec;  40.0 MB/s
+11676328	/tmp/dbbench-0/lmdb

@@ -1,0 +1,28 @@
+v3.0,Note: switching to 'v3.0'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+HEAD is now at 02f8c6aee8df Linux 3.0
+3.68
+v4.0,Previous HEAD position was 02f8c6aee8df Linux 3.0
+HEAD is now at 39a8804455fb Linux 4.0
+4.81
+v5.0,Previous HEAD position was 39a8804455fb Linux 4.0
+HEAD is now at 1c163f4c7b3f Linux 5.0
+6.42
+v6.0,Previous HEAD position was 1c163f4c7b3f Linux 5.0
+HEAD is now at 4fe89d07dcc2 Linux 6.0
+7.76

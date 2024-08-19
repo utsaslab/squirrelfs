@@ -1,0 +1,18 @@
+Filebench Version 1.5-alpha3
+0.000: Allocated 177MB of shared memory
+0.384: Varmail Version 3.0 personality successfully loaded
+0.384: Populating and pre-allocating filesets
+0.388: bigfileset populated: 1000 files, avg. dir. width = 1000000, avg. dir. depth = 0.5, 0 leafdirs, 14.959MB total size
+0.388: Removing bigfileset tree (if exists)
+0.395: Pre-allocating directories in bigfileset tree
+0.395: Pre-allocating files in bigfileset tree
+0.420: Waiting for pre-allocation to finish (in case of a parallel pre-allocation)
+0.420: Population and pre-allocation of filesets completed
+0.420: Starting 1 filereader instances
+1.422: Running...
+4.063: Failed to open file 518, /sufs/bigfileset/00000001/00000519, with status 10: Success
+4.063: failed to create file createfile2
+4.063: filereaderthread-10: flowop createfile2-1 failed
+4.423: Run took 3 seconds...
+4.423: NO VALID RESULTS! Filebench run terminated prematurely
+4.423: Shutting down processes

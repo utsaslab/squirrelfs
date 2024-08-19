@@ -1,0 +1,290 @@
+<?xml version="1.0"?>
+<alloy>
+
+<view nodetheme="Martha">
+
+<projection> <type name="defs/Volatile"/> </projection>
+
+<defaultnode/>
+
+<defaultedge/>
+
+<node>
+   <type name="Int"/>
+   <type name="String"/>
+   <type name="univ"/>
+   <type name="defs/Alloc"/>
+   <type name="defs/AllocStarted"/>
+   <type name="defs/ClearIno"/>
+   <type name="defs/ClearRenamePointer"/>
+   <type name="defs/Complete"/>
+   <type name="defs/Create"/>
+   <type name="defs/DataPageHeader"/>
+   <type name="defs/Dealloc"/>
+   <type name="defs/DeallocStart"/>
+   <type name="defs/DecLink"/>
+   <type name="defs/DeleteDir"/>
+   <type name="defs/DeleteInode"/>
+   <type name="defs/Dentry"/>
+   <type name="defs/DentryOperation"/>
+   <type name="defs/DirInode"/>
+   <type name="defs/DirPageHeader"/>
+   <type name="defs/FileInode"/>
+   <type name="defs/Ftruncate"/>
+   <type name="defs/IncLink"/>
+   <type name="defs/Init"/>
+   <type name="defs/InitRenamePointer"/>
+   <type name="defs/Inode"/>
+   <type name="defs/Mkdir"/>
+   <type name="defs/NoDentry"/>
+   <type name="defs/NoInode"/>
+   <type name="defs/PageHeader"/>
+   <type name="defs/PageUnmap"/>
+   <type name="defs/PMObj"/>
+   <type name="defs/RecoveryClearInitRptr"/>
+   <type name="defs/RecoveryClearSetRptr"/>
+   <type name="defs/RecoveryRenamed"/>
+   <type name="defs/Rename"/>
+   <type name="defs/Renamed"/>
+   <type name="defs/Renaming"/>
+   <type name="defs/Rmdir"/>
+   <type name="defs/SetRenamePointer"/>
+   <type name="defs/SetSize"/>
+   <type name="defs/Start"/>
+   <type name="defs/Unlink"/>
+   <type name="defs/UnmapPages"/>
+   <type name="defs/Volatile"/>
+   <type name="defs/Write"/>
+   <type name="defs/Writeable"/>
+   <type name="defs/Written"/>
+   <type name="seq/Int"/>
+   <type name="defs/boolean/Bool"/>
+   <type name="defs/boolean/False"/>
+   <type name="defs/boolean/True"/>
+   <set name="$AllocStartedState" type="defs/PMObj"/>
+   <set name="$AllocState" type="defs/PMObj"/>
+   <set name="$clear_dir_link_count_op" type="defs/DeleteDir"/>
+   <set name="$clear_inode_ino_op" type="defs/DeleteInode"/>
+   <set name="$clear_inode_metadata_op" type="defs/DeleteInode"/>
+   <set name="$ClearInoState" type="defs/PMObj"/>
+   <set name="$ClearRenamePointerState" type="defs/PMObj"/>
+   <set name="$complete_create_and_link_op" type="defs/Create"/>
+   <set name="$complete_mkdir_op" type="defs/Mkdir"/>
+   <set name="$complete_rename_op" type="defs/Rename"/>
+   <set name="$complete_unlink_keep_inode_op" type="defs/Unlink"/>
+   <set name="$CompleteState" type="defs/PMObj"/>
+   <set name="$DeallocStartState" type="defs/PMObj"/>
+   <set name="$DeallocState" type="defs/PMObj"/>
+   <set name="$dec_link_count_op" type="defs/DeleteInode"/>
+   <set name="$DecLinkState" type="defs/PMObj"/>
+   <set name="$dentry_set_name_bytes_op" type="defs/Create"/>
+   <set name="$dentry_set_name_bytes_op" type="defs/Mkdir"/>
+   <set name="$dentry_set_name_bytes_rename_d" type="defs/Dentry"/>
+   <set name="$dentry_set_name_bytes_rename_op" type="defs/Create"/>
+   <set name="$dentry_set_name_bytes_rename_op" type="defs/Mkdir"/>
+   <set name="$finish_alloc_data_page_op" type="defs/Write"/>
+   <set name="$finish_alloc_file_inode_op" type="defs/Create"/>
+   <set name="$finish_dealloc_dentry_d" type="defs/Dentry"/>
+   <set name="$finish_dealloc_dentry_op" type="defs/DeleteInode"/>
+   <set name="$finish_dealloc_dir_inode_op" type="defs/DeleteInode"/>
+   <set name="$finish_dealloc_file_inode_i" type="defs/FileInode"/>
+   <set name="$finish_dealloc_file_inode_op" type="defs/DeleteInode"/>
+   <set name="$FreeState" type="defs/PMObj"/>
+   <set name="$get_writeable_page_op" type="defs/Write"/>
+   <set name="$inc_link_count_link_i" type="defs/FileInode"/>
+   <set name="$inc_link_count_link_op" type="defs/Create"/>
+   <set name="$inc_link_count_mkdir_i" type="defs/DirInode"/>
+   <set name="$inc_link_count_mkdir_op" type="defs/Mkdir"/>
+   <set name="$IncLinkState" type="defs/PMObj"/>
+   <set name="$InitRenamePointerState" type="defs/PMObj"/>
+   <set name="$InitState" type="defs/PMObj"/>
+   <set name="$invalid" type="defs/Dentry"/>
+   <set name="$Live" type="defs/PMObj"/>
+   <set name="$Orphan" type="defs/PMObj"/>
+   <set name="$RecoveryClearInitRptrState" type="defs/PMObj"/>
+   <set name="$RecoveryClearSetRptrState" type="defs/PMObj"/>
+   <set name="$RecoveryRenamedState" type="defs/PMObj"/>
+   <set name="$RenamedState" type="defs/PMObj"/>
+   <set name="$RenamingState" type="defs/PMObj"/>
+   <set name="$set_data_page_backpointer_op" type="defs/Write"/>
+   <set name="$set_data_page_offset_op" type="defs/Write"/>
+   <set name="$set_data_page_type_op" type="defs/Write"/>
+   <set name="$set_dir_ino_in_dentry_op" type="defs/Mkdir"/>
+   <set name="$set_dir_page_backpointer_op" type="defs/Operation"/>
+   <set name="$set_inode_size_op" type="defs/Write"/>
+   <set name="$SetRenamePointerState" type="defs/PMObj"/>
+   <set name="$start_alloc_data_page_op" type="defs/Write"/>
+   <set name="$start_alloc_dir_inode_op" type="defs/Mkdir"/>
+   <set name="$start_dealloc_inode_i" type="defs/Inode"/>
+   <set name="$start_dealloc_inode_op" type="defs/DeleteInode"/>
+   <set name="$start_dealloc_unlink_dentry_op" type="defs/Unlink"/>
+   <set name="$start_delete_dir_inode_rename_d" type="defs/Dentry"/>
+   <set name="$start_delete_dir_inode_rename_i" type="defs/DirInode"/>
+   <set name="$start_delete_dir_inode_rename_op" type="defs/Rename"/>
+   <set name="$StartState" type="defs/PMObj"/>
+   <set name="$unlink_delete_inode_op" type="defs/DeleteInode"/>
+   <set name="$UnmapPagesState" type="defs/PMObj"/>
+   <set name="$valid" type="defs/Dentry"/>
+   <set name="$write_to_page_op" type="defs/Write"/>
+   <set name="$WrittenState" type="defs/PMObj"/>
+   <set name="recovering" type="defs/boolean/Bool"/>
+   <set name="s_vfs_rename_mutex" type="defs/Operation"/>
+   <set name="defs/DirtyInodeSet" type="defs/Inode"/>
+   <set name="defs/DirtyMetadataSet" type="defs/Inode"/>
+   <set name="defs/DirtyTypeSet" type="defs/PageHeader"/>
+</node>
+
+<node color="Black">
+   <set name="$crash" type="defs/PMObj"/>
+</node>
+
+<node color="Gray">
+   <set name="$skip" type="defs/PMObj"/>
+</node>
+
+<node color="Green">
+   <set name="$complete_recovery" type="defs/PMObj"/>
+   <set name="$start_recovery" type="defs/PMObj"/>
+</node>
+
+<node color="Red">
+   <set name="$acquire_irwsem_excl_i" type="defs/Inode"/>
+   <set name="$acquire_irwsem_excl_op" type="defs/Operation"/>
+   <set name="$acquire_vfs_rename_mutex_op" type="defs/Operation"/>
+   <set name="$alloc_dir_page_p" type="defs/DirPageHeader"/>
+   <set name="$clear_dir_link_count_i" type="defs/DirInode"/>
+   <set name="$clear_ino_rename_dst" type="defs/Dentry"/>
+   <set name="$clear_ino_rename_src" type="defs/Dentry"/>
+   <set name="$clear_ino_rmdir_d" type="defs/Dentry"/>
+   <set name="$clear_ino_rmdir_op" type="defs/Rmdir"/>
+   <set name="$clear_ino_unlink_d" type="defs/Dentry"/>
+   <set name="$clear_ino_unlink_op" type="defs/Unlink"/>
+   <set name="$clear_inode_ino_i" type="defs/Inode"/>
+   <set name="$clear_inode_metadata_i" type="defs/Inode"/>
+   <set name="$clear_rename_pointer_dst" type="defs/Dentry"/>
+   <set name="$clear_rename_pointer_src" type="defs/Dentry"/>
+   <set name="$clwb" type="defs/PMObj"/>
+   <set name="$complete_create_and_link_d" type="defs/Dentry"/>
+   <set name="$complete_create_and_link_i" type="defs/Inode"/>
+   <set name="$complete_dealloc_page_p" type="defs/PageHeader"/>
+   <set name="$complete_ftruncate_i" type="defs/FileInode"/>
+   <set name="$complete_ftruncate_op" type="defs/Ftruncate"/>
+   <set name="$complete_mkdir_d" type="defs/Dentry"/>
+   <set name="$complete_mkdir_i" type="defs/DirInode"/>
+   <set name="$complete_page_unmap_i" type="defs/Inode"/>
+   <set name="$complete_page_unmap_op" type="defs/PageUnmap"/>
+   <set name="$complete_rename_dst" type="defs/Dentry"/>
+   <set name="$complete_rename_src" type="defs/Dentry"/>
+   <set name="$complete_unlink_keep_inode_i" type="defs/FileInode"/>
+   <set name="$complete_write_i" type="defs/FileInode"/>
+   <set name="$complete_write_op" type="defs/Write"/>
+   <set name="$dealloc_data_page_unset_offset_p" type="defs/DataPageHeader"/>
+   <set name="$dealloc_page_start_p" type="defs/PageHeader"/>
+   <set name="$dealloc_page_unset_type_p" type="defs/PageHeader"/>
+   <set name="$dec_link_count_d" type="defs/Dentry"/>
+   <set name="$dec_link_count_i" type="defs/Inode"/>
+   <set name="$dec_link_count_parent_d" type="defs/Dentry"/>
+   <set name="$dec_link_count_parent_i" type="defs/Inode"/>
+   <set name="$dec_link_count_parent_op" type="defs/Rename"/>
+   <set name="$dec_link_count_rename_d" type="defs/Dentry"/>
+   <set name="$dec_link_count_rename_i" type="defs/Inode"/>
+   <set name="$dec_link_count_rename_op" type="defs/Rename"/>
+   <set name="$decrease_inode_size_i" type="defs/FileInode"/>
+   <set name="$decrease_inode_size_op" type="defs/Ftruncate"/>
+   <set name="$dentry_clear_name_bytes_d" type="defs/Dentry"/>
+   <set name="$dentry_set_name_bytes_d" type="defs/Dentry"/>
+   <set name="$dentry_set_name_bytes_op" type="defs/Rename"/>
+   <set name="$dentry_set_name_bytes_rename_op" type="defs/Rename"/>
+   <set name="$fence" type="defs/PMObj"/>
+   <set name="$finish_alloc_data_page_p" type="defs/DataPageHeader"/>
+   <set name="$finish_alloc_dir_inode_i" type="defs/DirInode"/>
+   <set name="$finish_alloc_dir_inode_op" type="defs/Mkdir"/>
+   <set name="$finish_alloc_file_inode_i" type="defs/FileInode"/>
+   <set name="$finish_dealloc_dir_inode_i" type="defs/DirInode"/>
+   <set name="$get_writeable_page_p" type="defs/DataPageHeader"/>
+   <set name="$increase_inode_size_i" type="defs/FileInode"/>
+   <set name="$increase_inode_size_op" type="defs/Ftruncate"/>
+   <set name="$init_rename_pointer_dst" type="defs/Dentry"/>
+   <set name="$init_rename_pointer_src" type="defs/Dentry"/>
+   <set name="$recovery_clear_init_rptr_dst" type="defs/Dentry"/>
+   <set name="$recovery_clear_init_rptr_src" type="defs/Dentry"/>
+   <set name="$recovery_clear_ino" type="defs/Dentry"/>
+   <set name="$recovery_clear_set_rptr" type="defs/Dentry"/>
+   <set name="$set_data_page_backpointer_i" type="defs/FileInode"/>
+   <set name="$set_data_page_backpointer_p" type="defs/DataPageHeader"/>
+   <set name="$set_data_page_offset_p" type="defs/DataPageHeader"/>
+   <set name="$set_data_page_type_p" type="defs/DataPageHeader"/>
+   <set name="$set_dir_ino_in_dentry_d" type="defs/Dentry"/>
+   <set name="$set_dir_ino_in_dentry_i" type="defs/DirInode"/>
+   <set name="$set_dir_inode_link_count" type="defs/Inode"/>
+   <set name="$set_dir_page_backpointer_i" type="defs/DirInode"/>
+   <set name="$set_dir_page_backpointer_p" type="defs/DirPageHeader"/>
+   <set name="$set_file_ino_in_dentry_d" type="defs/Dentry"/>
+   <set name="$set_file_ino_in_dentry_i" type="defs/FileInode"/>
+   <set name="$set_file_ino_in_dentry_op" type="defs/Operation"/>
+   <set name="$set_file_inode_link_count" type="defs/Inode"/>
+   <set name="$set_inode_ino" type="defs/Inode"/>
+   <set name="$set_inode_metadata" type="defs/Inode"/>
+   <set name="$set_inode_size_i" type="defs/FileInode"/>
+   <set name="$set_rename_ptr_dst" type="defs/Dentry"/>
+   <set name="$set_rename_ptr_src" type="defs/Dentry"/>
+   <set name="$start_alloc_data_page_p" type="defs/DataPageHeader"/>
+   <set name="$start_alloc_dir_inode_i" type="defs/Inode"/>
+   <set name="$start_alloc_file_inode_i" type="defs/Inode"/>
+   <set name="$start_alloc_file_inode_op" type="defs/Create"/>
+   <set name="$start_dealloc_dir_dentry_d" type="defs/Dentry"/>
+   <set name="$start_dealloc_dir_dentry_op" type="defs/DeleteDir"/>
+   <set name="$start_dealloc_renamed_dentry_dst" type="defs/Dentry"/>
+   <set name="$start_dealloc_renamed_dentry_src" type="defs/Dentry"/>
+   <set name="$start_dealloc_unlink_dentry_d" type="defs/Dentry"/>
+   <set name="$start_delete_dir_inode_rmdir_d" type="defs/Dentry"/>
+   <set name="$start_delete_dir_inode_rmdir_i" type="defs/DirInode"/>
+   <set name="$start_delete_dir_inode_rmdir_op" type="defs/Rename"/>
+   <set name="$unlink_delete_inode_i" type="defs/FileInode"/>
+   <set name="$unset_page_backpointer_i" type="defs/Inode"/>
+   <set name="$unset_page_backpointer_op" type="defs/PageUnmap"/>
+   <set name="$unset_page_backpointer_p" type="defs/PageHeader"/>
+   <set name="$write_to_page_p" type="defs/DataPageHeader"/>
+</node>
+
+<node shape="Hexagon" color="Blue">
+   <type name="defs/Operation"/>
+</node>
+
+<node shape="House">
+   <type name="defs/Root"/>
+</node>
+
+<node style="inherit">
+   <set name="defs/Clean" type="defs/PMObj"/>
+   <set name="defs/Dirty" type="defs/PMObj"/>
+   <set name="defs/InFlight" type="defs/PMObj"/>
+   <set name="defs/InodeSet" type="defs/Inode"/>
+   <set name="defs/MetadataSet" type="defs/Inode"/>
+   <set name="defs/TypeSet" type="defs/PageHeader"/>
+</node>
+
+<node visible="no">
+   <type name="defs/Free"/>
+   <type name="defs/OpTypestate"/>
+</node>
+
+<edge style="inherit">
+   <relation name="dentries"> <type name="defs/DirPageHeader"/> <type name="defs/Dentry"/> </relation>
+   <relation name="inode"> <type name="defs/Dentry"/> <type name="defs/Inode"/> </relation>
+   <relation name="inode"> <type name="defs/PageHeader"/> <type name="defs/Inode"/> </relation>
+   <relation name="link_count"> <type name="defs/Inode"/> <type name="Int"/> </relation>
+   <relation name="name_qw_set"> <type name="defs/Dentry"/> <type name="Int"/> </relation>
+   <relation name="pos"> <type name="defs/Write"/> <type name="Int"/> </relation>
+   <relation name="rename_pointer"> <type name="defs/Dentry"/> <type name="defs/Dentry"/> </relation>
+   <relation name="typestate"> <type name="defs/PMObj"/> <type name="defs/OpTypestate"/> </relation>
+</edge>
+
+<edge visible="no">
+   <relation name="children"> <type name="defs/DirInode"/> <type name="defs/Inode"/> </relation>
+   <relation name="owns"> <type name="defs/Inode"/> <type name="defs/PageHeader"/> </relation>
+</edge>
+
+</view>
+
+</alloy>

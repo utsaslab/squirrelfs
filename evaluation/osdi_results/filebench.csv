@@ -1,0 +1,12 @@
+fileserver,ext4,nova,winefs,arckfs,squirrelfs
+,24672.48,34945.83,34427.61,81827.55,37712.61
+
+varmail,ext4,nova,winefs,arckfs,squirrelfs
+,209429.69,377804.8,357864.09,0.0,428053.26
+
+webserver,ext4,nova,winefs,arckfs,squirrelfs
+,916770.66,941965.7,955159.13,1287925.11,951623.3
+
+webproxy,ext4,nova,winefs,arckfs,squirrelfs
+,469284.02,440385.29,423230.92,0.0,444719.6
+

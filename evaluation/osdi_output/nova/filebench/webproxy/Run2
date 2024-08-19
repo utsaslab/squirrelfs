@@ -1,0 +1,37 @@
+Filebench Version 1.5-alpha3
+0.000: Allocated 177MB of shared memory
+0.383: Web proxy-server Version 3.0 personality successfully loaded
+0.383: Populating and pre-allocating filesets
+0.398: bigfileset populated: 10000 files, avg. dir. width = 1000000, avg. dir. depth = 0.7, 0 leafdirs, 156.250MB total size
+0.398: Removing bigfileset tree (if exists)
+0.412: Pre-allocating directories in bigfileset tree
+0.412: Pre-allocating files in bigfileset tree
+0.556: Waiting for pre-allocation to finish (in case of a parallel pre-allocation)
+0.556: Population and pre-allocation of filesets completed
+0.556: Starting 1 proxycache instances
+1.582: Running...
+61.588: Run took 60 seconds...
+61.611: op,ops,ops/s,mb/s,ms/op,min latency(ms),max latency(ms),
+limit,0,0,0.0,0.000,0.000000,0.000,
+closefile6,1409886,23496,0.0,0.001,0.000000,14.004,
+readfile6,1409888,23496,184.4,0.024,0.001000,16.039,
+openfile6,1409888,23496,0.0,0.043,0.001000,46.182,
+closefile5,1409889,23496,0.0,0.001,0.000000,12.881,
+readfile5,1409889,23496,184.4,0.024,0.001000,15.328,
+openfile5,1409891,23496,0.0,0.044,0.001000,42.355,
+closefile4,1409891,23496,0.0,0.001,0.000000,13.373,
+readfile4,1409891,23496,184.6,0.024,0.001000,15.803,
+openfile4,1409892,23496,0.0,0.046,0.001000,48.910,
+closefile3,1409892,23496,0.0,0.001,0.000000,15.255,
+readfile3,1409894,23496,184.5,0.025,0.001000,15.878,
+openfile3,1409894,23496,0.0,0.048,0.001000,42.630,
+closefile2,1409895,23496,0.0,0.001,0.000000,16.977,
+readfile2,1409895,23496,184.6,0.025,0.001000,17.623,
+openfile2,1409896,23496,0.0,0.055,0.001000,46.157,
+closefile1,1409902,23496,0.0,0.002,0.000000,15.081,
+appendfilerand1,1409904,23497,183.5,0.050,0.001000,17.206,
+createfile1,1409950,23497,0.0,1.586,0.007000,62.794,
+deletefile1,1409392,23488,0.0,1.571,0.010000,50.320,
+total,26787519,446422.586,1106.0
+61.611: IO Summary: 26787519 ops 446422.586 ops/s 117481/23497 rd/wr 1106.0 mb/s 0.188 ms/op
+61.611: Shutting down processes

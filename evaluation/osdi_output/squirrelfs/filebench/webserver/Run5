@@ -1,0 +1,52 @@
+Filebench Version 1.5-alpha3
+0.000: Allocated 177MB of shared memory
+0.385: Web-server Version 3.1 personality successfully loaded
+0.385: Populating and pre-allocating filesets
+0.389: logfiles populated: 1 files, avg. dir. width = 20, avg. dir. depth = 0.0, 0 leafdirs, 0.002MB total size
+0.389: Removing logfiles tree (if exists)
+0.394: Pre-allocating directories in logfiles tree
+0.394: Pre-allocating files in logfiles tree
+0.398: bigfileset populated: 1000 files, avg. dir. width = 20, avg. dir. depth = 2.3, 0 leafdirs, 14.760MB total size
+0.398: Removing bigfileset tree (if exists)
+0.402: Pre-allocating directories in bigfileset tree
+0.402: Pre-allocating files in bigfileset tree
+0.420: Waiting for pre-allocation to finish (in case of a parallel pre-allocation)
+0.420: Population and pre-allocation of filesets completed
+0.420: Starting 1 filereader instances
+1.447: Running...
+61.453: Run took 60 seconds...
+61.508: op,ops,ops/s,mb/s,ms/op,min latency(ms),max latency(ms),
+appendlog,1842045,30698,240.0,0.044,0.001000,42.270,
+closefile10,1841948,30697,0.0,0.001,0.000000,3.584,
+readfile10,1841951,30697,453.4,0.009,0.001000,3.613,
+openfile10,1841955,30697,0.0,0.081,0.001000,42.268,
+closefile9,1841962,30697,0.0,0.001,0.000000,3.638,
+readfile9,1841963,30697,453.2,0.009,0.001000,3.686,
+openfile9,1841966,30697,0.0,0.081,0.001000,43.277,
+closefile8,1841969,30697,0.0,0.001,0.000000,3.717,
+readfile8,1841969,30697,453.1,0.009,0.001000,0.817,
+openfile8,1841971,30697,0.0,0.081,0.001000,42.928,
+closefile7,1841977,30697,0.0,0.001,0.000000,3.668,
+readfile7,1841977,30697,453.2,0.009,0.001000,3.650,
+openfile7,1841981,30697,0.0,0.081,0.001000,42.322,
+closefile6,1841986,30697,0.0,0.001,0.000000,3.322,
+readfile6,1841986,30697,453.0,0.009,0.001000,3.704,
+openfile6,1841990,30697,0.0,0.081,0.002000,42.989,
+closefile5,1841994,30698,0.0,0.001,0.000000,3.724,
+readfile5,1841994,30698,453.3,0.009,0.001000,2.582,
+openfile5,1841999,30698,0.0,0.081,0.001000,42.894,
+closefile4,1842002,30698,0.0,0.001,0.000000,2.780,
+readfile4,1842002,30698,453.1,0.009,0.001000,3.663,
+openfile4,1842009,30698,0.0,0.081,0.002000,41.842,
+closefile3,1842014,30698,0.0,0.001,0.000000,3.879,
+readfile3,1842015,30698,453.1,0.009,0.001000,3.605,
+openfile3,1842024,30698,0.0,0.081,0.001000,42.258,
+closefile2,1842026,30698,0.0,0.001,0.000000,3.653,
+readfile2,1842027,30698,452.9,0.009,0.001000,3.753,
+openfile2,1842031,30698,0.0,0.081,0.001000,42.983,
+closefile1,1842040,30698,0.0,0.001,0.000000,3.732,
+readfile1,1842041,30698,452.5,0.009,0.001000,3.802,
+openfile1,1842044,30698,0.0,0.081,0.002000,43.101,
+total,57101858,951623.296,4770.9
+61.508: IO Summary: 57101858 ops 951623.296 ops/s 306975/30698 rd/wr 4770.9 mb/s 0.031 ms/op
+61.508: Shutting down processes

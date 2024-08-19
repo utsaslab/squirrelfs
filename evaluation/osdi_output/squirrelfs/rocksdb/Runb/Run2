@@ -1,0 +1,46 @@
+java -cp /mnt/local_ssd/home/hayley/ycsb-0.17.0/rocksdb-binding/conf:/mnt/local_ssd/home/hayley/ycsb-0.17.0/conf:/mnt/local_ssd/home/hayley/ycsb-0.17.0/lib/jackson-core-asl-1.9.4.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/lib/jackson-mapper-asl-1.9.4.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/lib/HdrHistogram-2.1.4.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/lib/core-0.17.0.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/lib/htrace-core4-4.1.0-incubating.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/rocksdb-binding/lib/rocksdb-binding-0.17.0.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/rocksdb-binding/lib/slf4j-simple-1.7.25.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/rocksdb-binding/lib/slf4j-api-1.7.25.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/rocksdb-binding/lib/jcip-annotations-1.0.jar:/mnt/local_ssd/home/hayley/ycsb-0.17.0/rocksdb-binding/lib/rocksdbjni-5.11.3.jar site.ycsb.Client -db site.ycsb.db.rocksdb.RocksDBClient -threads 8 -P /mnt/local_ssd/home/hayley/ycsb-0.17.0/workloads/workloadb -p rocksdb.dir=/mnt/pmem/rocksdb -p recordcount=25000000 -p operationcount=25000000 -t
+Command line: -db site.ycsb.db.rocksdb.RocksDBClient -threads 8 -P /mnt/local_ssd/home/hayley/ycsb-0.17.0/workloads/workloadb -p rocksdb.dir=/mnt/pmem/rocksdb -p recordcount=25000000 -p operationcount=25000000 -t
+YCSB Client 0.17.0
+
+Loading workload...
+Starting test.
+[Thread-2] INFO site.ycsb.db.rocksdb.RocksDBClient - RocksDB data dir: /mnt/pmem/rocksdb
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+DBWrapper: report latency for each error is false and specific error codes to track for latency are: []
+[OVERALL], RunTime(ms), 158877
+[OVERALL], Throughput(ops/sec), 157354.43141549753
+[TOTAL_GCS_G1_Young_Generation], Count, 63
+[TOTAL_GC_TIME_G1_Young_Generation], Time(ms), 65
+[TOTAL_GC_TIME_%_G1_Young_Generation], Time(%), 0.040912152168029355
+[TOTAL_GCS_G1_Old_Generation], Count, 0
+[TOTAL_GC_TIME_G1_Old_Generation], Time(ms), 0
+[TOTAL_GC_TIME_%_G1_Old_Generation], Time(%), 0.0
+[TOTAL_GCs], Count, 63
+[TOTAL_GC_TIME], Time(ms), 65
+[TOTAL_GC_TIME_%], Time(%), 0.040912152168029355
+[READ], Operations, 23749115
+[READ], AverageLatency(us), 47.143846454910005
+[READ], MinLatency(us), 1
+[READ], MaxLatency(us), 5283
+[READ], 95thPercentileLatency(us), 122
+[READ], 99thPercentileLatency(us), 187
+[READ], Return=OK, 23749115
+[CLEANUP], Operations, 8
+[CLEANUP], AverageLatency(us), 4146.25
+[CLEANUP], MinLatency(us), 4
+[CLEANUP], MaxLatency(us), 33151
+[CLEANUP], 95thPercentileLatency(us), 33151
+[CLEANUP], 99thPercentileLatency(us), 33151
+[UPDATE], Operations, 1250885
+[UPDATE], AverageLatency(us), 70.17855118576048
+[UPDATE], MinLatency(us), 7
+[UPDATE], MaxLatency(us), 2745
+[UPDATE], 95thPercentileLatency(us), 152
+[UPDATE], 99thPercentileLatency(us), 242
+[UPDATE], Return=OK, 1250885

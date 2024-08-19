@@ -1,0 +1,10 @@
+{
+    "sysroot": "/home/rustfs/.rustup/toolchains/1.66.0-x86_64-unknown-linux-gnu/",
+    "crates": [
+        {
+            "root_module": "/home/rustfs/squirrelfs/fs/hayleyfs/super.rs",
+            "edition": "2018",
+            "deps": []
+        }
+    ]
+}

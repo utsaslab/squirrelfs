@@ -1,0 +1,18 @@
+Filebench Version 1.5-alpha3
+0.000: Allocated 177MB of shared memory
+0.385: File-server Version 3.0 personality successfully loaded
+0.385: Populating and pre-allocating filesets
+0.400: bigfileset populated: 10000 files, avg. dir. width = 20, avg. dir. depth = 3.1, 0 leafdirs, 1240.757MB total size
+0.400: Removing bigfileset tree (if exists)
+0.415: Pre-allocating directories in bigfileset tree
+0.431: Pre-allocating files in bigfileset tree
+3.278: Waiting for pre-allocation to finish (in case of a parallel pre-allocation)
+3.278: Population and pre-allocation of filesets completed
+3.278: Starting 1 filereader instances
+4.280: Running...
+20.721: Failed to open file 9048, /sufs/bigfileset/00000005/00000003/00000012/00000005/00000009/00000017/00000085/00000004/00000021, with status 18: Success
+20.721: flowop openfile1 failed to open file 00000021
+20.721: filereaderthread-12: flowop openfile1-1 failed
+21.287: Run took 17 seconds...
+21.287: NO VALID RESULTS! Filebench run terminated prematurely
+21.287: Shutting down processes
