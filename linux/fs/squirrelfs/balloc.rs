@@ -270,7 +270,6 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
             // get a list of pages #s for each cpu
             while page.is_some() {
                 if let Some(page) = page {
-
                     let cpu : usize = allocator.pageno2cpuid(page.get_page_no())?;
 
                     // add cpu page to vector (vector is mutable)
@@ -288,9 +287,6 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                 }
                 page = page_list.current(); 
             }
-
-            // pr_info!("Num Pages in List: {}", num_pages); 
-
             allocator.dealloc_multiple_page(cpu_free_list_map)?;
             Ok(())
 
