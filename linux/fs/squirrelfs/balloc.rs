@@ -270,23 +270,18 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
             // get a list of pages #s for each cpu
             while page.is_some() {
                 if let Some(page) = page {
-                    // pr_info!("Page: {}", page.get_page_no());
 
                     let cpu : usize = allocator.pageno2cpuid(page.get_page_no())?;
 
-                    if cpu_free_list_map.get(&cpu).is_none() {
-                        cpu_free_list_map.try_insert(cpu, Vec::new())?; 
-                    }
-
                     // add cpu page to vector (vector is mutable)
-                    let cpu_page_vec_option : Option<&mut Vec<PageNum>> = cpu_free_list_map.get_mut(&cpu);
+                    let cpu_page_vec : Option<&mut Vec<PageNum>> = cpu_free_list_map.get_mut(&cpu);
 
-                    if cpu_page_vec_option.is_some() {
-                        let cpu_page_vec : &mut Vec<PageNum> = cpu_page_vec_option.unwrap(); // safe unwrap
+                    if let Some(cpu_page_vec) = cpu_page_vec {
                         cpu_page_vec.try_push(page.get_page_no())?;
                     } else {
-                        pr_info!("CPU not added to RBTree\n");
-                        return Err(EINVAL); 
+                        let mut free_list : Vec<PageNum> = Vec::new();
+                        free_list.try_push(page.get_page_no())?; 
+                        cpu_free_list_map.try_insert(cpu, free_list)?; 
                     }
                     
                     page_list.move_next();
@@ -371,14 +366,12 @@ impl PerCpuPageAllocator {
 
 
     fn dealloc_multiple_page(&self, cpu_free_list_map : RBTree<usize, Vec<PageNum>>) -> Result<()> {
-        // add pages to corresponding free list in ascending cpu # order
         for (cpu, page_nos) in cpu_free_list_map.iter() {
 
             let free_list = Arc::clone(&self.free_lists[*cpu]);
             let mut free_list = free_list.lock();
 
             for page_no in page_nos.iter() {
-
                 free_list.free_pages += 1;
                 let res = free_list.list.try_insert(*page_no, ());
 
