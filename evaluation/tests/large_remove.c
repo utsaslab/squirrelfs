@@ -3,6 +3,7 @@
 #include <stdbool.h> 
 #include <stdio.h>
 #include <assert.h> 
+#include <sys/statvfs.h>
 #define PAGESZ 4096
 // consume all the pages and test effectiveness of the deallocator to make space for a new file 
 // extend the size of a file or create a file and return the new size of the file
@@ -24,6 +25,9 @@ long int enlarge_file(char *path, long int size) {
 }
 
 int main(void) {
+    struct statvfs stat;
+    assert(statvfs("/mnt/pmem", &stat) == 0);
+    unsigned long pages_start = stat.f_bfree;
     bool used_all_pages = false;
     int multiple = 1; 
     long int prev_size = 0; 
@@ -38,6 +42,11 @@ int main(void) {
     // a new file with one less page should be able to be allocated after removal 
     assert(prev_size > 0);
     assert (remove(path) == 0);
+
+    assert(statvfs("/mnt/pmem", &stat) == 0);
+    unsigned long pages_end = stat.f_bfree;
+    assert(pages_start == pages_end);
+
     long int new_size = enlarge_file(path2, PAGESZ * (multiple - 1)); 
     assert (remove(path2) == 0); 
     assert(new_size == PAGESZ * (multiple - 1)); 
