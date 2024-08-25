@@ -164,14 +164,17 @@ impl file::Operations for FileOps {
             pr_info!("Punching a hole");
             let page_size : i64 = SQUIRRELFS_PAGESIZE.try_into()?;
             let mut start_page = offset / page_size;
-            let mut end_page = (offset + len) / page_size;
+            let mut end_page = initial_size / page_size;
 
             let start_page_offset = start_page * page_size;
             let end_page_offset = (end_page + 1) * page_size;
 
             // zero out the first page that is partial
             if start_page_offset < offset {
-                let partial_start_length = page_size - (offset % page_size);
+                pr_info!("Start"); 
+                pr_info!("{:?}", start_page_offset); 
+                let partial_start_length = if page_size - (offset % page_size) > len {len} else {page_size - (offset % page_size)};
+                pr_info!("{:?}", partial_start_length); 
                 let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_start_length.try_into()?, offset.try_into()?)?;
                 match pages {
                     Ok(pages) => {
@@ -181,11 +184,13 @@ impl file::Operations for FileOps {
                     Err(e) => return Err(EINVAL),
                 }
             }  
-
+            
+            pr_info!("{:?}, {:?}", end_page_offset, end_offset); 
             // zero out end page that is partial
             if end_page_offset > end_offset {
+                pr_info!("End"); 
                 let partial_end_length = end_offset % page_size;
-                let partial_end_offset = end_page_offset - page_size;
+                let partial_end_offset = if end_page_offset - page_size > offset {end_page_offset - page_size} else {offset};
                 let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_end_length.try_into()?, 
                     partial_end_offset.try_into()?)?;
                 match pages {
