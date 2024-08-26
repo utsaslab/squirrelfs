@@ -172,10 +172,7 @@ impl file::Operations for FileOps {
 
             // zero out the first page that is partial
             if start_page_offset < offset {
-                pr_info!("Start"); 
-                pr_info!("{:?}", start_page_offset); 
                 let partial_start_length = if page_size - (offset % page_size) > len {len} else {page_size - (offset % page_size)};
-                pr_info!("{:?}", partial_start_length); 
                 let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_start_length.try_into()?, offset.try_into()?)?;
                 let (_bytes_written, pages) = match pages {
                     Ok(pages) => {
@@ -188,26 +185,34 @@ impl file::Operations for FileOps {
                 pages.fence(); 
             }  
             
-            pr_info!("{:?}, {:?}", end_page_offset, end_offset); 
             // zero out end page that is partial
             if end_page_offset > end_offset {
-                pr_info!("End"); 
                 let partial_end_length = end_offset % page_size;
                 let partial_end_offset = if end_page_offset - page_size > offset {end_page_offset - page_size} else {offset};
-                pr_info!("{:?}, {:?}", partial_end_length, partial_end_offset); 
                 let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_end_length.try_into()?, 
                     partial_end_offset.try_into()?)?;
                 let (_bytes_written, pages) = match pages {
                     Ok(pages) => {
-                        pr_info!("here"); 
                         let (bytes_written, pages) = pages.zero_pages(sbi, partial_end_length.try_into()?, partial_end_offset.try_into()?)?;
                         end_page -= 1;
-                        pr_info!(""); 
                         (bytes_written, pages)
                     },
                     Err(e) => return Err(EINVAL),
                 };
                 pages.fence(); 
+            }
+
+            if start_page <= end_page {
+                let full_pages_offset = start_page * page_size;
+                let full_pages_length = (end_page - start_page + 1) * page_size;
+                let (new_size, pi) = pi.dec_size(initial_size.try_into()?);
+                let pages = DataPageListWrapper::get_data_pages_to_truncate(&pi, full_pages_length.try_into()?, 
+                    full_pages_offset.try_into()?)?;
+                let pages = pages.unmap(sbi)?.fence();
+                let pages = pages.dealloc(sbi)?.fence().mark_free();
+                sbi.page_allocator.dealloc_data_page_list(&pages)?;
+                let pi_info = pi.get_inode_info()?;
+                pi_info.remove_pages(&pages)?;
             }
         }
         Ok(1)
