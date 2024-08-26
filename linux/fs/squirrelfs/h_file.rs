@@ -164,7 +164,8 @@ impl file::Operations for FileOps {
             pr_info!("Punching a hole");
             let page_size : i64 = SQUIRRELFS_PAGESIZE.try_into()?;
             let mut start_page = offset / page_size;
-            let mut end_page = initial_size / page_size;
+            let mut end_page = if initial_size % page_size == 0 {initial_size / page_size - 1} 
+                else {initial_size / page_size };
 
             let start_page_offset = start_page * page_size;
             let end_page_offset = (end_page + 1) * page_size;
@@ -176,13 +177,15 @@ impl file::Operations for FileOps {
                 let partial_start_length = if page_size - (offset % page_size) > len {len} else {page_size - (offset % page_size)};
                 pr_info!("{:?}", partial_start_length); 
                 let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_start_length.try_into()?, offset.try_into()?)?;
-                match pages {
+                let (_bytes_written, pages) = match pages {
                     Ok(pages) => {
-                        pages.zero_pages(sbi, partial_start_length.try_into()?, offset.try_into()?)?;
+                        let (bytes_written, pages) = pages.zero_pages(sbi, partial_start_length.try_into()?, offset.try_into()?)?;
                         start_page += 1;
+                        (bytes_written, pages)
                     },
                     Err(e) => return Err(EINVAL),
-                }
+                };
+                pages.fence(); 
             }  
             
             pr_info!("{:?}, {:?}", end_page_offset, end_offset); 
@@ -191,15 +194,20 @@ impl file::Operations for FileOps {
                 pr_info!("End"); 
                 let partial_end_length = end_offset % page_size;
                 let partial_end_offset = if end_page_offset - page_size > offset {end_page_offset - page_size} else {offset};
+                pr_info!("{:?}, {:?}", partial_end_length, partial_end_offset); 
                 let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_end_length.try_into()?, 
                     partial_end_offset.try_into()?)?;
-                match pages {
+                let (_bytes_written, pages) = match pages {
                     Ok(pages) => {
-                        pages.zero_pages(sbi, partial_end_length.try_into()?, partial_end_offset.try_into()?)?;
+                        pr_info!("here"); 
+                        let (bytes_written, pages) = pages.zero_pages(sbi, partial_end_length.try_into()?, partial_end_offset.try_into()?)?;
                         end_page -= 1;
+                        pr_info!(""); 
+                        (bytes_written, pages)
                     },
                     Err(e) => return Err(EINVAL),
-                }
+                };
+                pages.fence(); 
             }
         }
         Ok(1)
