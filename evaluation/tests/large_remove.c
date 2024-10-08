@@ -1,54 +1,42 @@
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdbool.h> 
 #include <stdio.h>
 #include <assert.h> 
 #include <sys/statvfs.h>
+#include <string.h>
 #define PAGESZ 4096
-// consume all the pages and test effectiveness of the deallocator to make space for a new file 
-// extend the size of a file or create a file and return the new size of the file
-long int enlarge_file(char *path, long int size) {
-    int fd = open(path, O_CREAT | O_RDWR); 
-    assert (fd > -1); 
-    lseek(fd, size, SEEK_SET); 
-    FILE *fp = fdopen(fd, "w");
-    assert(fp); 
-    fputc('\0', fp);
-    fclose(fp);
-    close(fd);
-    fd = open(path, O_CREAT | O_RDWR); 
-    assert (fd > -1); 
-    lseek(fd, 0L, SEEK_END); 
-    long int new_size = lseek(fd, 0, SEEK_CUR) - 1; 
-    close(fd);
-    return new_size; 
-}
 
 int main(void) {
     struct statvfs stat;
     assert(statvfs("/mnt/pmem", &stat) == 0);
     unsigned long pages_start = stat.f_bfree;
-    bool used_all_pages = false;
-    int multiple = 1; 
-    long int prev_size = 0; 
+
     char *path = "/mnt/pmem/myfile";
-    char *path2 = "/mnt/pmem/myfile2";
-    while (!used_all_pages) {
-        long int new_size = enlarge_file(path, multiple * PAGESZ); 
-        used_all_pages = prev_size == new_size;
-        multiple = used_all_pages ? multiple : multiple + 1; 
-        prev_size = new_size; 
-    }
-    // a new file with one less page should be able to be allocated after removal 
-    assert(prev_size > 0);
-    assert (remove(path) == 0);
+
+    char data[4096];
+    memset(data, '\0', PAGESZ);
+    int fd = open(path, O_RDWR | O_CREAT);
+    assert(fd > 0);
+
 
     assert(statvfs("/mnt/pmem", &stat) == 0);
-    unsigned long pages_end = stat.f_bfree;
-    assert(pages_start == pages_end);
+    unsigned long pages_after_create = stat.f_bfree; 
+    assert (pages_start == pages_after_create + 1); // assert inode creation ccorrect
 
-    long int new_size = enlarge_file(path2, PAGESZ * (multiple - 1)); 
-    assert (remove(path2) == 0); 
-    assert(new_size == PAGESZ * (multiple - 1)); 
+    const int num_pages = 200000; 
+    for (int i = 0; i < num_pages; i++) {
+        assert(write(fd, data, PAGESZ) == PAGESZ);
+    }
+
+    assert(statvfs("/mnt/pmem", &stat) == 0);
+    unsigned long pages_now_free = stat.f_bfree; 
+    assert(pages_after_create == pages_now_free + num_pages); // assert all pages are in use
+
+    assert(lseek(fd, 0, SEEK_CUR) == (num_pages * PAGESZ)); // assert file expected size
+    close(fd); 
+
+    assert (remove(path) == 0);
+    assert(statvfs("/mnt/pmem", &stat) == 0);
+    unsigned long pages_end = stat.f_bfree; 
+    assert(pages_start == pages_end); // assert all pages back in free list
     return 0; 
 }
