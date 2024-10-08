@@ -14,15 +14,13 @@ int main(void) {
     unsigned long pages_start = stat.f_bfree;
     unsigned num_files = 5000; 
     char filename[64];
+    char data[PAGESZ * 2];
+    memset(data, '\0', PAGESZ * 2);
     memset(filename, 0, 64);
     for (int i = 0; i < num_files; i ++) {
         sprintf(filename, "/mnt/pmem/%d", i);
         int fd = open(filename, O_CREAT | O_RDWR);
-        lseek(fd, PAGESZ * 2, SEEK_SET); 
-        FILE *fp = fdopen(fd, "w");
-        assert(fp); 
-        putc('\0', fp);
-        fclose(fp);
+        assert(write(fd, data, PAGESZ * 2) == PAGESZ  * 2);
         close(fd);
     }
 
