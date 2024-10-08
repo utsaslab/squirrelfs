@@ -261,23 +261,39 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
     fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Free>) -> Result<()> {
         if let Some(allocator) = self {
             let mut page_list = pages.get_page_list_cursor();
-            let mut page = page_list.current();
+
+            // RBTree to store the free list for every cpu
+            let mut cpu_free_list_map : RBTree<usize, Vec<PageNum>> = RBTree::new(); 
+
+            let mut page = page_list.current(); // head of page list
+            
+            // get a list of pages #s for each cpu
             while page.is_some() {
-                // janky syntax to deal with the fact that page_list.current() returns an Option
                 if let Some(page) = page {
-                    // TODO: refactor to avoid acquiring lock on every iteration
-                    allocator.dealloc_page(page.get_page_no())?;
+                    let cpu : usize = allocator.pageno2cpuid(page.get_page_no())?;
+
+                    // add cpu page to vector (vector is mutable)
+                    let cpu_page_vec : Option<&mut Vec<PageNum>> = cpu_free_list_map.get_mut(&cpu);
+
+                    if let Some(cpu_page_vec) = cpu_page_vec {
+                        cpu_page_vec.try_push(page.get_page_no())?;
+                    } else {
+                        let mut free_list : Vec<PageNum> = Vec::new();
+                        free_list.try_push(page.get_page_no())?; 
+                        cpu_free_list_map.try_insert(cpu, free_list)?; 
+                    }
+                    
                     page_list.move_next();
-                } else {
-                    unreachable!()
                 }
-                page = page_list.current();
+                page = page_list.current(); 
             }
+            allocator.dealloc_multiple_page(cpu_free_list_map)?;
             Ok(())
+
         } else {
             pr_info!("ERROR: page allocator is uninitialized\n");
             Err(EINVAL)
-        }
+        }            
     }
 
     fn dealloc_dir_page<'a>(&self, page: &DirPageWrapper<'a, Clean, Dealloc>) -> Result<()> {
@@ -343,6 +359,50 @@ impl PerCpuPageAllocator {
             Ok(())
         }
     }
+
+
+    fn dealloc_multiple_page(&self, cpu_free_list_map : RBTree<usize, Vec<PageNum>>) -> Result<()> {
+        for (cpu, page_nos) in cpu_free_list_map.iter() {
+
+            let free_list = Arc::clone(&self.free_lists[*cpu]);
+            let mut free_list = free_list.lock();
+
+            for page_no in page_nos.iter() {
+                free_list.free_pages += 1;
+                let res = free_list.list.try_insert(*page_no, ());
+
+                // unwrap the error so we can get at the option
+                let res = match res {
+                    Ok(res) => res,
+                    Err(e) => {
+                        pr_info!(
+                            "ERROR: failed to insert {:?} into page allocator at CPU {:?}, error {:?}\n",
+                            page_no,
+                            cpu,
+                            e
+                        );
+                        return Err(e);
+                    }
+                };
+
+                if res.is_some() {
+                    pr_info!(
+                        "ERROR: page {:?} was already in the allocator at CPU {:?}\n",
+                        page_no,
+                        cpu
+                    );
+                    return Err(EINVAL); 
+                } 
+            }
+        }
+        Ok(())
+    }
+
+    fn pageno2cpuid(&self, page_no : PageNum) -> Result<usize> {
+        let cpu: usize = ((page_no - self.start) / self.pages_per_cpu).try_into()?;
+        Ok(cpu)
+    }
+
 }
 
 // placeholder page descriptor that can represent either a dir or data page descriptor
