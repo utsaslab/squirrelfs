@@ -553,14 +553,14 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
-#[unstable(feature = "fmt_internals", issue = "none")]
-pub use core::fmt::rt;
+// #[unstable(feature = "fmt_internals", issue = "none")]
+// pub use core::fmt::rt;
 #[stable(feature = "fmt_flags_align", since = "1.28.0")]
 pub use core::fmt::Alignment;
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::fmt::Error;
 #[stable(feature = "rust1", since = "1.0.0")]
-pub use core::fmt::{write, ArgumentV1, Arguments};
+pub use core::fmt::{write, Arguments};
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::fmt::{Binary, Octal};
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -611,9 +611,12 @@ pub fn format(args: Arguments<'_>) -> string::String {
     fn format_inner(args: Arguments<'_>) -> string::String {
         let capacity = args.estimated_capacity();
         let mut output = string::String::with_capacity(capacity);
-        output.write_fmt(args).expect("a formatting trait implementation returned an error");
+        output
+            .write_fmt(args)
+            .expect("a formatting trait implementation returned an error");
         output
     }
 
-    args.as_str().map_or_else(|| format_inner(args), crate::borrow::ToOwned::to_owned)
+    args.as_str()
+        .map_or_else(|| format_inner(args), crate::borrow::ToOwned::to_owned)
 }

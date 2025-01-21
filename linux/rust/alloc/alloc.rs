@@ -58,6 +58,7 @@ extern "Rust" {
 #[unstable(feature = "allocator_api", issue = "32838")]
 #[derive(Copy, Clone, Default, Debug)]
 #[cfg(not(test))]
+#[cfg_attr(not(test), lang = "global_alloc_ty")]
 pub struct Global;
 
 #[cfg(test)]
@@ -180,7 +181,11 @@ impl Global {
             0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
             // SAFETY: `layout` is non-zero in size,
             size => unsafe {
-                let raw_ptr = if zeroed { alloc_zeroed(layout) } else { alloc(layout) };
+                let raw_ptr = if zeroed {
+                    alloc_zeroed(layout)
+                } else {
+                    alloc(layout)
+                };
                 let ptr = NonNull::new(raw_ptr).ok_or(AllocError)?;
                 Ok(NonNull::slice_from_raw_parts(ptr, size))
             },
@@ -335,18 +340,15 @@ unsafe fn exchange_malloc(size: usize, align: usize) -> *mut u8 {
     }
 }
 
-#[cfg_attr(not(test), lang = "box_free")]
+// #[cfg_attr(not(test), lang = "box_free")]
 #[inline]
-#[rustc_const_unstable(feature = "const_box", issue = "92521")]
+// #[rustc_const_unstable(feature = "const_box", issue = "92521")]
 // This signature has to be the same as `Box`, otherwise an ICE will happen.
 // When an additional parameter to `Box` is added (like `A: Allocator`), this has to be added here as
 // well.
 // For example if `Box` is changed to  `struct Box<T: ?Sized, A: Allocator>(Unique<T>, A)`,
 // this function has to be changed to `fn box_free<T: ?Sized, A: Allocator>(Unique<T>, A)` as well.
-pub(crate) const unsafe fn box_free<T: ?Sized, A: ~const Allocator + ~const Destruct>(
-    ptr: Unique<T>,
-    alloc: A,
-) {
+pub(crate) unsafe fn box_free<T: ?Sized, A: Allocator>(ptr: Unique<T>, alloc: A) {
     unsafe {
         let size = size_of_val(ptr.as_ref());
         let align = min_align_of_val(ptr.as_ref());

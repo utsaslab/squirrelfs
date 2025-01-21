@@ -11,6 +11,7 @@ use core::iter::{
 };
 use core::marker::PhantomData;
 use core::mem::{self, ManuallyDrop, MaybeUninit, SizedTypeProperties};
+use core::num::NonZero;
 #[cfg(not(no_global_oom_handling))]
 use core::ops::Deref;
 use core::ptr::{self, NonNull};
@@ -183,7 +184,7 @@ impl<T, A: Allocator> Iterator for IntoIter<T, A> {
     }
 
     #[inline]
-    fn advance_by(&mut self, n: usize) -> Result<(), usize> {
+    fn advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
         let step_size = self.len().min(n);
         let to_drop = ptr::slice_from_raw_parts_mut(self.ptr as *mut T, step_size);
         if T::IS_ZST {
@@ -200,7 +201,8 @@ impl<T, A: Allocator> Iterator for IntoIter<T, A> {
             ptr::drop_in_place(to_drop);
         }
         if step_size < n {
-            return Err(step_size);
+            // SAFETY: `step_size` is less than `n`
+            return Err(unsafe { NonZero::new_unchecked(n - step_size) });
         }
         Ok(())
     }
@@ -260,7 +262,11 @@ impl<T, A: Allocator> Iterator for IntoIter<T, A> {
         // that `T: Copy` so reading elements from the buffer doesn't invalidate
         // them for `Drop`.
         unsafe {
-            if T::IS_ZST { mem::zeroed() } else { ptr::read(self.ptr.add(i)) }
+            if T::IS_ZST {
+                mem::zeroed()
+            } else {
+                ptr::read(self.ptr.add(i))
+            }
         }
     }
 }
@@ -285,7 +291,7 @@ impl<T, A: Allocator> DoubleEndedIterator for IntoIter<T, A> {
     }
 
     #[inline]
-    fn advance_back_by(&mut self, n: usize) -> Result<(), usize> {
+    fn advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
         let step_size = self.len().min(n);
         if T::IS_ZST {
             // SAFETY: same as for advance_by()
@@ -300,7 +306,8 @@ impl<T, A: Allocator> DoubleEndedIterator for IntoIter<T, A> {
             ptr::drop_in_place(to_drop);
         }
         if step_size < n {
-            return Err(step_size);
+            // SAFETY: same as for advance_by()
+            return Err(unsafe { NonZero::new_unchecked(n - step_size) });
         }
         Ok(())
     }
@@ -345,7 +352,9 @@ where
 impl<T: Clone, A: Allocator + Clone> Clone for IntoIter<T, A> {
     #[cfg(not(test))]
     fn clone(&self) -> Self {
-        self.as_slice().to_vec_in(self.alloc.deref().clone()).into_iter()
+        self.as_slice()
+            .to_vec_in(self.alloc.deref().clone())
+            .into_iter()
     }
     #[cfg(test)]
     fn clone(&self) -> Self {
@@ -380,9 +389,9 @@ unsafe impl<#[may_dangle] T, A: Allocator> Drop for IntoIter<T, A> {
 
 // In addition to the SAFETY invariants of the following three unsafe traits
 // also refer to the vec::in_place_collect module documentation to get an overview
-#[unstable(issue = "none", feature = "inplace_iteration")]
-#[doc(hidden)]
-unsafe impl<T, A: Allocator> InPlaceIterable for IntoIter<T, A> {}
+// #[unstable(issue = "none", feature = "inplace_iteration")]
+// #[doc(hidden)]
+// unsafe impl<T, A: Allocator> InPlaceIterable for IntoIter<T, A> {}
 
 #[unstable(issue = "none", feature = "inplace_iteration")]
 #[doc(hidden)]

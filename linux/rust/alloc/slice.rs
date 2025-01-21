@@ -54,8 +54,8 @@ pub use core::slice::{Chunks, Windows};
 pub use core::slice::{ChunksExact, ChunksExactMut};
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::slice::{ChunksMut, Split, SplitMut};
-#[unstable(feature = "slice_group_by", issue = "80552")]
-pub use core::slice::{GroupBy, GroupByMut};
+// #[unstable(feature = "slice_group_by", issue = "80552")]
+// pub use core::slice::{GroupBy, GroupByMut};
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::slice::{Iter, IterMut};
 #[stable(feature = "rchunks", since = "1.31.0")]
@@ -110,7 +110,10 @@ pub(crate) mod hack {
     }
 
     #[inline]
-    pub fn try_to_vec<T: TryConvertVec, A: Allocator>(s: &[T], alloc: A) -> Result<Vec<T, A>, TryReserveError> {
+    pub fn try_to_vec<T: TryConvertVec, A: Allocator>(
+        s: &[T],
+        alloc: A,
+    ) -> Result<Vec<T, A>, TryReserveError> {
         T::try_to_vec(s, alloc)
     }
 
@@ -146,7 +149,10 @@ pub(crate) mod hack {
                 }
             }
             let mut vec = Vec::with_capacity_in(s.len(), alloc);
-            let mut guard = DropGuard { vec: &mut vec, num_init: 0 };
+            let mut guard = DropGuard {
+                vec: &mut vec,
+                num_init: 0,
+            };
             let slots = guard.vec.spare_capacity_mut();
             // .take(slots.len()) is necessary for LLVM to remove bounds checks
             // and has better codegen than zip.
@@ -182,7 +188,10 @@ pub(crate) mod hack {
 
     impl<T: Clone> TryConvertVec for T {
         #[inline]
-        default fn try_to_vec<A: Allocator>(s: &[Self], alloc: A) -> Result<Vec<Self, A>, TryReserveError> {
+        default fn try_to_vec<A: Allocator>(
+            s: &[Self],
+            alloc: A,
+        ) -> Result<Vec<Self, A>, TryReserveError> {
             struct DropGuard<'a, T, A: Allocator> {
                 vec: &'a mut Vec<T, A>,
                 num_init: usize,
@@ -198,7 +207,10 @@ pub(crate) mod hack {
                 }
             }
             let mut vec = Vec::try_with_capacity_in(s.len(), alloc)?;
-            let mut guard = DropGuard { vec: &mut vec, num_init: 0 };
+            let mut guard = DropGuard {
+                vec: &mut vec,
+                num_init: 0,
+            };
             let slots = guard.vec.spare_capacity_mut();
             // .take(slots.len()) is necessary for LLVM to remove bounds checks
             // and has better codegen than zip.
@@ -402,8 +414,12 @@ impl<T> [T] {
         // Helper macro for indexing our vector by the smallest possible type, to reduce allocation.
         macro_rules! sort_by_key {
             ($t:ty, $slice:ident, $f:ident) => {{
-                let mut indices: Vec<_> =
-                    $slice.iter().map($f).enumerate().map(|(i, k)| (k, i as $t)).collect();
+                let mut indices: Vec<_> = $slice
+                    .iter()
+                    .map($f)
+                    .enumerate()
+                    .map(|(i, k)| (k, i as $t))
+                    .collect();
                 // The elements of `indices` are unique, as they are indexed, so any sort will be
                 // stable with respect to the original slice. We use `sort_unstable` here because
                 // it requires less memory allocation.
@@ -941,7 +957,10 @@ where
             // If `is_less` panics at any point during the process, `hole` will get dropped and
             // fill the hole in `v` with `tmp`, thus ensuring that `v` still holds every object it
             // initially held exactly once.
-            let mut hole = InsertionHole { src: &*tmp, dest: &mut v[1] };
+            let mut hole = InsertionHole {
+                src: &*tmp,
+                dest: &mut v[1],
+            };
             ptr::copy_nonoverlapping(&v[1], &mut v[0], 1);
 
             for i in 2..v.len() {
@@ -1009,7 +1028,11 @@ where
         // The left run is shorter.
         unsafe {
             ptr::copy_nonoverlapping(v, buf, mid);
-            hole = MergeHole { start: buf, end: buf.add(mid), dest: v };
+            hole = MergeHole {
+                start: buf,
+                end: buf.add(mid),
+                dest: v,
+            };
         }
 
         // Initially, these pointers point to the beginnings of their arrays.
@@ -1033,7 +1056,11 @@ where
         // The right run is shorter.
         unsafe {
             ptr::copy_nonoverlapping(v_mid, buf, len - mid);
-            hole = MergeHole { start: buf, end: buf.add(len - mid), dest: v_mid };
+            hole = MergeHole {
+                start: buf,
+                end: buf.add(len - mid),
+                dest: v_mid,
+            };
         }
 
         // Initially, these pointers point past the ends of their arrays.
@@ -1165,7 +1192,10 @@ where
         }
 
         // Push this run onto the stack.
-        runs.push(Run { start, len: end - start });
+        runs.push(Run {
+            start,
+            len: end - start,
+        });
         end = start;
 
         // Merge some pairs of adjacent runs to satisfy the invariants.
@@ -1180,7 +1210,10 @@ where
                     &mut is_less,
                 );
             }
-            runs[r] = Run { start: left.start, len: left.len + right.len };
+            runs[r] = Run {
+                start: left.start,
+                len: left.len + right.len,
+            };
             runs.remove(r + 1);
         }
     }
@@ -1211,7 +1244,11 @@ where
                 || (n >= 3 && runs[n - 3].len <= runs[n - 2].len + runs[n - 1].len)
                 || (n >= 4 && runs[n - 4].len <= runs[n - 3].len + runs[n - 2].len))
         {
-            if n >= 3 && runs[n - 3].len < runs[n - 1].len { Some(n - 3) } else { Some(n - 2) }
+            if n >= 3 && runs[n - 3].len < runs[n - 1].len {
+                Some(n - 3)
+            } else {
+                Some(n - 2)
+            }
         } else {
             None
         }

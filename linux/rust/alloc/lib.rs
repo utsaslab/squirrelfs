@@ -100,10 +100,10 @@
 #![feature(async_iterator)]
 #![feature(coerce_unsized)]
 #![cfg_attr(not(no_global_oom_handling), feature(const_alloc_error))]
-#![feature(const_box)]
+// #![feature(const_box)]
 #![cfg_attr(not(no_global_oom_handling), feature(const_btree_len))]
 #![feature(const_cow_is_borrowed)]
-#![feature(const_convert)]
+// #![feature(const_convert)]
 #![feature(const_size_of_val)]
 #![feature(const_align_of_val)]
 #![feature(const_ptr_read)]
@@ -134,7 +134,7 @@
 #![feature(nonnull_slice_from_raw_parts)]
 #![feature(pattern)]
 #![feature(pointer_byte_offsets)]
-#![feature(provide_any)]
+// #![feature(provide_any)]
 #![feature(ptr_internals)]
 #![feature(ptr_metadata)]
 #![feature(ptr_sub_ptr)]
@@ -172,7 +172,7 @@
 #![feature(dropck_eyepatch)]
 #![feature(exclusive_range_pattern)]
 #![feature(fundamental)]
-#![cfg_attr(not(test), feature(generator_trait))]
+// #![cfg_attr(not(test), feature(generator_trait))]
 #![feature(hashmap_internals)]
 #![feature(lang_items)]
 #![feature(min_specialization)]
@@ -189,6 +189,7 @@
 #![feature(unsized_fn_params)]
 #![feature(c_unwind)]
 #![feature(with_negative_coherence)]
+#![feature(generic_nonzero)]
 //
 // Rustdoc features:
 #![feature(doc_cfg)]
@@ -239,14 +240,23 @@ pub mod str;
 pub mod string;
 #[cfg(all(not(no_rc), not(no_sync), target_has_atomic = "ptr"))]
 pub mod sync;
-#[cfg(all(not(no_global_oom_handling), not(no_rc), not(no_sync), target_has_atomic = "ptr"))]
+#[cfg(all(
+    not(no_global_oom_handling),
+    not(no_rc),
+    not(no_sync),
+    target_has_atomic = "ptr"
+))]
 pub mod task;
 #[cfg(test)]
 mod tests;
 pub mod vec;
 
 #[doc(hidden)]
-#[unstable(feature = "liballoc_internals", issue = "none", reason = "implementation detail")]
+#[unstable(
+    feature = "liballoc_internals",
+    issue = "none",
+    reason = "implementation detail"
+)]
 pub mod __export {
     pub use core::format_args;
 }

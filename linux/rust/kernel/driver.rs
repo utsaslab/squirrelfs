@@ -152,9 +152,9 @@ impl<T: RawDeviceId, U, const N: usize> IdArray<T, U, N> {
     /// Creates a new instance of the array.
     ///
     /// The contents are derived from the given identifiers and context information.
-    pub const fn new(ids: [T; N], infos: [Option<U>; N]) -> Self
+    pub fn new(ids: [T; N], infos: [Option<U>; N]) -> Self
     where
-        T: ~const RawDeviceId + Copy,
+        T: RawDeviceId + Copy,
     {
         let mut array = Self {
             ids: [T::ZERO; N],
