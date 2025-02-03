@@ -81,7 +81,7 @@ sudo make modules_install install
 ```
 cd squirrelfs 
 sudo insmod linux/fs/squirrelfs/squirrelfs.ko
-sudo mount -o init -t squirrelfs /dev/pmem0 /mnt/pmem`
+sudo mount -o init -t squirrelfs /dev/pmem0 /mnt/pmem
 ```
 2. Run `df` to confirm that SquirrelFS is mounted. If SquirrelFS is mounted, the output will include something like:
 ```
