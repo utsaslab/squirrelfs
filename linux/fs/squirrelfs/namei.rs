@@ -275,8 +275,7 @@ impl inode::Operations for InodeOps {
             let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
             squirrelfs_truncate(sbi, pi, unsafe { (*iattr).ia_size })
         } else {
-            // TODO: should be enotsupp?
-            Ok(())
+            Err(ENOTSUPP)
         }
     }
 }

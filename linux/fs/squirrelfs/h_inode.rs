@@ -33,8 +33,9 @@ pub(crate) struct SquirrelFsInode {
     inode_type: InodeType, // TODO: currently 2 bytes? could be 1
     link_count: u16,
     mode: u16,
-    uid: u32,
-    gid: u32,
+    uid_gid: u64, // first four bytes are UID, second are GID. makes it easier to update both atomically
+    // uid: u32,
+    // gid: u32,
     ctime: bindings::timespec64,
     atime: bindings::timespec64,
     mtime: bindings::timespec64,
@@ -50,8 +51,8 @@ impl core::fmt::Debug for SquirrelFsInode {
             .field("inode_type", &self.inode_type)
             .field("link_count", &self.link_count)
             .field("mode", &self.mode)
-            .field("uid", &self.uid)
-            .field("gid", &self.gid)
+            .field("uid", &self.get_uid())
+            .field("gid", &self.get_gid())
             .field("ctime", &self.ctime.tv_nsec)
             .field("atime", &self.atime.tv_nsec)
             .field("mtime", &self.mtime.tv_nsec)
@@ -134,18 +135,18 @@ impl SquirrelFsInode {
         root_ino.link_count = 2;
         root_ino.size = 4096; // dir size always set to 4KB
         root_ino.inode_type = InodeType::DIR;
-        root_ino.uid = unsafe {
-            bindings::from_kuid(
-                &mut bindings::init_user_ns as *mut bindings::user_namespace,
-                sbi.uid,
-            )
-        };
-        root_ino.gid = unsafe {
-            bindings::from_kgid(
-                &mut bindings::init_user_ns as *mut bindings::user_namespace,
-                sbi.gid,
-            )
-        };
+        unsafe {
+            root_ino.set_uid_and_gid(
+                bindings::from_kuid(
+                        &mut bindings::init_user_ns as *mut bindings::user_namespace,
+                        sbi.uid,
+                ),
+                bindings::from_kgid(
+                    &mut bindings::init_user_ns as *mut bindings::user_namespace,
+                    sbi.gid,
+                )
+            );
+        }
         root_ino.blocks = 0;
         root_ino.mode = sbi.mode | bindings::S_IFDIR as u16;
 
@@ -174,11 +175,26 @@ impl SquirrelFsInode {
     }
 
     pub(crate) fn get_uid(&self) -> u32 {
-        self.uid
+        // get UID bits by shifting right to get rid of GID
+        // and casting to u32. `as u32` discards the top 32 
+        // bits, which is fine here because it's just zeros
+        (self.uid_gid >> 32) as u32
     }
 
     pub(crate) fn get_gid(&self) -> u32 {
-        self.gid
+        // casting to u32 drops the top 32 bits, which are the UID
+        self.uid_gid as u32
+    }
+
+    pub(crate) unsafe fn set_uid_and_gid(&mut self, uid: u32, gid: u32) {
+        let uid_u64 = (uid as u64) << 32; // shift uid to upper bytes
+        let gid_u64 = gid as u64; // upper bytes are zeroes
+        let uid_gid = uid_u64 | gid_u64; // bitwise OR to combine
+        self.uid_gid = uid_gid;
+    }
+
+    pub(crate) unsafe fn clear_uid_and_gid(&mut self) {
+        self.uid_gid = 0;
     }
 
     pub(crate) fn get_mtime(&self) -> bindings::timespec64 {
@@ -225,8 +241,7 @@ impl SquirrelFsInode {
         self.inode_type == InodeType::NONE &&
         self.link_count == 0 &&
         self.mode == 0 &&
-        self.uid == 0 &&
-        self.gid == 0 &&
+        self.uid_gid == 0 &&
         self.ctime.tv_sec == 0 &&
         self.ctime.tv_nsec == 0 &&
         self.atime.tv_sec == 0 &&
@@ -674,8 +689,7 @@ impl<'a> InodeWrapper<'a, Clean, Dealloc, RegInode> {
         // link count should already be 0
         assert!(self.inode.link_count == 0);
         self.inode.mode = 0;
-        self.inode.uid = 0;
-        self.inode.gid = 0;
+        unsafe { self.inode.clear_uid_and_gid() };
         self.inode.ctime.tv_sec = 0;
         self.inode.ctime.tv_nsec = 0;
         self.inode.atime.tv_sec = 0;
@@ -788,8 +802,7 @@ impl<'a> InodeWrapper<'a, Clean, TooManyLinks, RegInode> {
 unsafe fn dealloc_pm_inode(inode: &mut SquirrelFsInode) {
     inode.inode_type = InodeType::NONE;
     inode.mode = 0;
-    inode.uid = 0;
-    inode.gid = 0;
+    unsafe { inode.clear_uid_and_gid(); }
     inode.ctime.tv_sec = 0;
     inode.ctime.tv_nsec = 0;
     inode.atime.tv_sec = 0;
@@ -830,8 +843,7 @@ impl<'a> InodeWrapper<'a, Clean, UnmapPages, DirInode> {
         // to just clear the link count if it is in fact 2
         assert!(self.inode.link_count == 1);
         self.inode.mode = 0;
-        self.inode.uid = 0;
-        self.inode.gid = 0;
+        unsafe { self.inode.clear_uid_and_gid(); }
         self.inode.link_count = 0;
         self.inode.ctime.tv_sec = 0;
         self.inode.ctime.tv_nsec = 0;
@@ -859,8 +871,7 @@ impl<'a> InodeWrapper<'a, Clean, UnmapPages, DirInode> {
         // to just clear the link count if it is in fact 1
         assert!(self.inode.link_count == 2);
         self.inode.mode = 0;
-        self.inode.uid = 0;
-        self.inode.gid = 0;
+        unsafe { self.inode.clear_uid_and_gid(); }
         self.inode.ctime.tv_sec = 0;
         self.inode.ctime.tv_nsec = 0;
         self.inode.atime.tv_sec = 0;
@@ -910,8 +921,12 @@ impl<'a> InodeWrapper<'a, Clean, Free, RegInode> {
         self.inode.inode_type = InodeType::REG;
         self.inode.mode = mode;
         self.inode.blocks = 0;
-        self.inode.uid = unsafe { (*inode.get_inner()).i_uid.val };
-        self.inode.gid = unsafe { (*inode.get_inner()).i_gid.val };
+        unsafe {
+            self.inode.set_uid_and_gid(
+                (*inode.get_inner()).i_uid.val,
+                (*inode.get_inner()).i_gid.val
+            );
+        }
         let time = unsafe { bindings::current_time(inode.get_inner()) };
         self.inode.ctime = time;
         self.inode.atime = time;
@@ -930,8 +945,12 @@ impl<'a> InodeWrapper<'a, Clean, Free, RegInode> {
         self.inode.inode_type = InodeType::SYMLINK;
         self.inode.mode = mode;
         self.inode.blocks = 0;
-        self.inode.uid = unsafe { (*inode.get_inner()).i_uid.val };
-        self.inode.gid = unsafe { (*inode.get_inner()).i_gid.val };
+        unsafe {
+            self.inode.set_uid_and_gid(
+                (*inode.get_inner()).i_uid.val,
+                (*inode.get_inner()).i_gid.val
+            );
+        }
         let time = unsafe { bindings::current_time(inode.get_inner()) };
         self.inode.ctime = time;
         self.inode.atime = time;
@@ -968,8 +987,12 @@ impl<'a> InodeWrapper<'a, Clean, Free, DirInode> {
         self.inode.blocks = 0;
         self.inode.inode_type = InodeType::DIR;
         self.inode.mode = mode | bindings::S_IFDIR as u16;
-        self.inode.uid = unsafe { (*parent.get_inner()).i_uid.val };
-        self.inode.gid = unsafe { (*parent.get_inner()).i_gid.val };
+        unsafe {
+            self.inode.set_uid_and_gid(
+                (*parent.get_inner()).i_uid.val,
+                (*parent.get_inner()).i_gid.val
+            );
+        }
         let time = unsafe { bindings::current_time(parent.get_inner()) };
         self.inode.ctime = time;
         self.inode.atime = time;
