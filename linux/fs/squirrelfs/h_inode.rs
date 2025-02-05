@@ -1026,9 +1026,34 @@ impl<'a, State, Op, Type> InodeWrapper<'a, State, Op, Type> {
         Self::new(self)
     }
 
-    pub(crate) fn update_ctime(self, timestamp: bindings::timespec64) -> InodeWrapper<'a, Dirty, Op, Type>{
+    pub(crate) fn update_ctime_and_atime(self, timestamp: bindings::timespec64) -> InodeWrapper<'a, Dirty, Op, Type>{
         self.inode.ctime = timestamp;
         self.inode.atime = timestamp;
+        Self::new(self)
+    }
+
+    pub(crate) fn update_atime(self, timestamp: bindings::timespec64) -> InodeWrapper<'a, Dirty, Op, Type> {
+        self.inode.atime = timestamp;
+        Self::new(self)
+    }
+
+    pub(crate) fn update_ctime(self, timestamp: bindings::timespec64) -> InodeWrapper<'a, Dirty, Op, Type> {
+        self.inode.ctime = timestamp;
+        Self::new(self)
+    }
+
+    pub(crate) fn update_mtime(self, timestamp: bindings::timespec64) -> InodeWrapper<'a, Dirty, Op, Type> {
+        self.inode.mtime = timestamp;
+        Self::new(self)
+    }
+
+    pub(crate) fn update_uid_and_gid(self, uid: u32, gid: u32) -> InodeWrapper<'a, Dirty, Op, Type> {
+        unsafe { self.inode.set_uid_and_gid(uid, gid); }
+        Self::new(self)
+    }
+
+    pub(crate) fn update_mode(self, mode: u16) -> InodeWrapper<'a, Dirty, Op, Type> {
+        self.inode.mode = mode;
         Self::new(self)
     }
 }

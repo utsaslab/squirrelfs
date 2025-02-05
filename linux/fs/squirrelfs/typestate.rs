@@ -62,7 +62,7 @@ impl AddLink for IncLink {}
 
 pub(crate) trait RenameSource {}
 impl RenameSource for ClearIno {} // Normal renaming
-impl RenameSource for Recovering {}  // Recovery renaming
+impl RenameSource for Recovering {} // Recovery renaming
 
 // undescriptive name because this is used in multiple unrelated places
 // 1. setting a rename pointer

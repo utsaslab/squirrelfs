@@ -255,7 +255,16 @@ impl inode::Operations for InodeOps {
         iattr: *mut bindings::iattr,
     ) -> Result<()> {
         let inode: &mut fs::INode = unsafe { &mut *dentry.d_inode().cast() };
+        let sb = inode.i_sb();
+        let fs_info_raw = unsafe { (*sb).s_fs_info };
+        // TODO: it's probably not safe to just grab s_fs_info and
+        // get a mutable reference to one of the dram indexes
+        let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
+        let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
 
+        let ia_valid = unsafe { (*iattr).ia_valid };
+
+        // determine if we are going to truncate the file
         let truncate = unsafe {
             let ret = bindings::setattr_prepare(mnt_idmap, dentry.get_inner(), iattr);
             if ret < 0 {
@@ -263,20 +272,62 @@ impl inode::Operations for InodeOps {
             }
             bindings::setattr_copy(mnt_idmap, inode.get_inner(), iattr);
 
-            (*iattr).ia_valid & bindings::ATTR_SIZE != 0 && (*iattr).ia_size != inode.i_size_read()
+            ia_valid & bindings::ATTR_SIZE != 0 && (*iattr).ia_size != inode.i_size_read()
+        };
+
+        // update timestamps. right now timestamps don't use operational typestate.
+        // this is a bit inefficient -- we probably don't need to do fences between
+        // each, but this makes the code a bit more concise
+        let pi = if ia_valid & bindings::ATTR_ATIME != 0 {
+            pi.update_atime(unsafe { (*iattr).ia_atime })
+                .flush()
+                .fence()
+        } else {
+            pi
+        };
+        let pi = if ia_valid & bindings::ATTR_MTIME != 0 {
+            pi.update_mtime(unsafe { (*iattr).ia_mtime })
+                .flush()
+                .fence()
+        } else {
+            pi
+        };
+        let pi = if ia_valid & bindings::ATTR_CTIME != 0 {
+            pi.update_ctime(unsafe { (*iattr).ia_ctime })
+                .flush()
+                .fence()
+        } else {
+            pi
+        };
+
+        let pi = if ia_valid & bindings::ATTR_UID != 0 || ia_valid & bindings::ATTR_GID != 0 {
+            // need to update uid and/or gid
+            let uid = if ia_valid & bindings::ATTR_UID != 0 {
+                unsafe { (*iattr).__bindgen_anon_1.ia_uid.val }
+            } else {
+                pi.get_uid()
+            };
+            let gid = if ia_valid & bindings::ATTR_GID != 0 {
+                unsafe { (*iattr).__bindgen_anon_2.ia_gid.val }
+            } else {
+                pi.get_gid()
+            };
+            pi.update_uid_and_gid(uid, gid).flush().fence()
+        } else {
+            pi
+        };
+
+        let pi = if ia_valid & bindings::ATTR_MODE != 0 {
+            pi.update_mode(unsafe { (*iattr).ia_mode }).flush().fence()
+        } else {
+            pi
         };
 
         if truncate {
-            let sb = inode.i_sb();
-            let fs_info_raw = unsafe { (*sb).s_fs_info };
-            // TODO: it's probably not safe to just grab s_fs_info and
-            // get a mutable reference to one of the dram indexes
-            let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
-            let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
-            squirrelfs_truncate(sbi, pi, unsafe { (*iattr).ia_size })
-        } else {
-            Err(ENOTSUPP)
+            return squirrelfs_truncate(sbi, pi, unsafe { (*iattr).ia_size });
         }
+
+        Ok(())
     }
 }
 
@@ -607,7 +658,10 @@ fn squirrelfs_link<'a>(
     let inode: &mut fs::INode = unsafe { &mut *old_dentry.d_inode().cast() };
     let target_inode = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
     inode.update_ctime();
-    let target_inode = target_inode.update_ctime(inode.get_atime()).flush().fence();
+    let target_inode = target_inode
+        .update_ctime_and_atime(inode.get_atime())
+        .flush()
+        .fence();
 
     let target_inode = target_inode.inc_link_count()?.flush().fence();
     // TODO: this should really go in the caller, but if another part of this function fails
@@ -924,7 +978,10 @@ fn reg_inode_rename<'a>(
             // overwriting a dentry
             let new_pi = sbi.get_init_reg_inode_by_vfs_inode(new_inode.get_inner())?;
             new_inode.update_ctime();
-            let new_pi = new_pi.update_ctime(new_inode.get_ctime()).flush().fence();
+            let new_pi = new_pi
+                .update_ctime_and_atime(new_inode.get_ctime())
+                .flush()
+                .fence();
             let (src_dentry, dst_dentry) = if let Some(new_dir) = new_dir {
                 let (src_dentry, dst_dentry) = rename_overwrite_dentry_file_inode(
                     sbi,
@@ -954,7 +1011,10 @@ fn reg_inode_rename<'a>(
             // creating a new dentry
             let pi = sbi.get_init_reg_inode_by_vfs_inode(old_inode.get_inner())?;
             old_inode.update_ctime();
-            let pi = pi.update_ctime(old_inode.get_ctime()).flush().fence();
+            let pi = pi
+                .update_ctime_and_atime(old_inode.get_ctime())
+                .flush()
+                .fence();
             let (src_dentry, dst_dentry) = if let Some(new_dir) = new_dir {
                 let dst_dentry = get_free_dentry(sbi, &new_dir)?;
                 let dst_dentry = dst_dentry.set_name(new_name, false)?.flush().fence();
@@ -1016,7 +1076,10 @@ fn dir_inode_rename<'a>(
                 // overwriting another dentry in the same dir
                 let new_pi = sbi.get_init_dir_inode_by_vfs_inode(new_inode.get_inner())?;
                 new_inode.update_ctime();
-                let new_pi = new_pi.update_ctime(new_inode.get_ctime()).flush().fence();
+                let new_pi = new_pi
+                    .update_ctime_and_atime(new_inode.get_ctime())
+                    .flush()
+                    .fence();
                 let (src_dentry, dst_dentry) = rename_overwrite_dentry_dir_inode_single_dir(
                     sbi,
                     old_dentry_info,
@@ -1033,7 +1096,10 @@ fn dir_inode_rename<'a>(
                 // creating a new dentry in the same dir
                 let pi = sbi.get_init_dir_inode_by_vfs_inode(old_inode.get_inner())?;
                 old_inode.update_ctime();
-                let pi = pi.update_ctime(old_inode.get_ctime()).flush().fence();
+                let pi = pi
+                    .update_ctime_and_atime(old_inode.get_ctime())
+                    .flush()
+                    .fence();
                 let dst_dentry = get_free_dentry(sbi, &old_dir)?;
                 let dst_dentry = dst_dentry.set_name(new_name, true)?.flush().fence();
                 let (src_dentry, dst_dentry) = rename_new_dentry_dir_inode_single_dir(
@@ -1058,7 +1124,10 @@ fn dir_inode_rename<'a>(
                 // overwriting a dentry in a different directory
                 let new_pi = sbi.get_init_dir_inode_by_vfs_inode(new_inode.get_inner())?;
                 new_inode.update_ctime();
-                let new_pi = new_pi.update_ctime(new_inode.get_ctime()).flush().fence();
+                let new_pi = new_pi
+                    .update_ctime_and_atime(new_inode.get_ctime())
+                    .flush()
+                    .fence();
                 let (src_dentry, dst_dentry) = rename_overwrite_dentry_dir_inode_single_dir(
                     sbi,
                     old_dentry_info,
@@ -1075,7 +1144,10 @@ fn dir_inode_rename<'a>(
                 // creating a new dentry in a different directory
                 let pi = sbi.get_init_dir_inode_by_vfs_inode(old_inode.get_inner())?;
                 old_inode.update_ctime();
-                let pi = pi.update_ctime(old_inode.get_ctime()).flush().fence();
+                let pi = pi
+                    .update_ctime_and_atime(old_inode.get_ctime())
+                    .flush()
+                    .fence();
                 let dst_dentry = get_free_dentry(sbi, &new_dir)?;
                 let dst_dentry = dst_dentry.set_name(new_name, true)?.flush().fence();
                 let (src_dentry, dst_dentry, new_dir) = rename_new_dentry_dir_inode_crossdir(
@@ -1746,7 +1818,7 @@ fn squirrelfs_unlink<'a>(
         parent_inode_info.delete_dentry(dentry_info)?;
         let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
         inode.update_ctime();
-        let pi = pi.update_ctime(inode.get_ctime()).flush().fence();
+        let pi = pi.update_ctime_and_atime(inode.get_ctime()).flush().fence();
         let pd = pd.clear_ino().flush().fence();
 
         // decrement the inode's link count
