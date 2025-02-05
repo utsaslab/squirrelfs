@@ -214,7 +214,7 @@ If you'd like to run `rust-analyzer`, do the following:
 To use `rust-analyzer` with a text editor like VSCode, open your `settings.json` for VSCode and insert the following lines:
 ```
 "rust-analyzer.linkedProjects": [
-    "<absolute path to this repo>/linux/fs/hayleyfs/rust-project.json"
+    "<absolute path to this repo>/linux/fs/squirrelfs/rust-project.json"
 ],
 ```
 Finally, replace the path above to the absolute path of the `rust-project.json` file you modified above.
