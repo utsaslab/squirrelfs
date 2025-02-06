@@ -8,18 +8,30 @@ def parse_files(fs, runs, csv_writer, result_dir):
 
     for run in runs:
         for filesystem in fs:
-            result_file = result_dir + '/' + filesystem + '/checkout/' + 'Run' + str(run)
+            result_file = result_dir + '/' + filesystem + '/linux_checkout/' + 'Run' + str(run)
             in_file = open(result_file, 'r')
             lines = in_file.readlines()
             current_version = ""
+            skiplines = True
             for line in lines:
                 line = line.rstrip("\n").split(",")
 
-                if line[0] in versions:
-                    current_version=line[0]
-                elif "HEAD" not in line[0]:
-                    timing = float(line[0])
-                    results[current_version][filesystem].append(timing)
+                if skiplines and "HEAD is now" not in line[0]:
+                    if line[0] in versions:
+                        current_version=line[0]
+                    continue
+                else:
+                    skiplines = False
+                
+                if not skiplines:
+                    if line[0] in versions:
+                        current_version=line[0]
+                    elif "HEAD" not in line[0]:
+                        timing = float(line[0])
+                        results[current_version][filesystem].append(timing)
+
+    avg_results = {v: {f: sum(results[v][f])/len(results[v][f]) for f in fs} for v in versions}
+    print(avg_results)
 
     for v in versions:
         row_header = [v]
@@ -27,11 +39,12 @@ def parse_files(fs, runs, csv_writer, result_dir):
             row_header.append(filesystem)
         csv_writer.writerow(row_header)
 
-        for i in range(0, len(results[v]["ext4"])):
-            row = ['']
-            for filesystem in fs:
-                row.append(results[v][filesystem][i])
-            csv_writer.writerow(row)
+        # for i in range(0, len(results[v]["ext4"])):
+        row = ['']
+        for filesystem in fs:
+            # row.append(results[v][filesystem][i])
+            row.append(avg_results[v][filesystem])
+        csv_writer.writerow(row)
         csv_writer.writerow([])
             
     in_file.close()
