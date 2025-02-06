@@ -360,6 +360,8 @@ pub(crate) fn squirrelfs_iget(
         }
     }
 
+    pr_info!("iget {:?}\n", ino);
+
     // set up the new inode
     let pi = sbi.get_inode_by_ino(ino)?;
 
@@ -597,6 +599,20 @@ pub(crate) fn add_dot_dentries(
     Ok(())
 }
 
+pub(crate) fn remove_dot_dentries(
+    dentries: &mut RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>,
+) -> Result<()> {
+    let dot: &CStr = CStr::from_bytes_with_nul(".\0".as_bytes())?;
+    let dotdot = CStr::from_bytes_with_nul("..\0".as_bytes())?;
+    let mut dot_array = [0; MAX_FILENAME_LEN];
+    let mut dotdot_array = [0; MAX_FILENAME_LEN];
+    dot_array[..dot.len()].copy_from_slice(dot.as_bytes());
+    dotdot_array[..dotdot.len()].copy_from_slice(dotdot.as_bytes());
+    dentries.remove(&dot_array);
+    dentries.remove(&dotdot_array);
+    Ok(())
+}
+
 unsafe fn insert_vfs_inode(vfs_inode: *mut bindings::inode, dentry: &fs::DEntry) -> Result<()> {
     // TODO: check that the inode is fully set up and doesn't already exist
     // until then this is unsafe
@@ -798,8 +814,9 @@ pub(crate) fn rmdir_delete_pages<'a>(
             Ok(pi.iterator_dealloc(pages).flush())
         }
         _ => {
-            let pages = runtime_rmdir_delete_pages(sbi, &pi)?;
-            Ok(pi.runtime_dealloc(pages).flush())
+            Err(ENOTSUPP)
+            // let pages = runtime_rmdir_delete_pages(sbi, &pi)?;
+            // Ok(pi.runtime_dealloc(pages).flush())
         }
     }
 }
@@ -823,49 +840,49 @@ fn iterator_rmdir_delete_pages<'a>(
     Ok(pages)
 }
 
-fn runtime_rmdir_delete_pages<'a>(
-    sbi: &'a SbInfo,
-    pi: &InodeWrapper<'a, Clean, UnmapPages, DirInode>,
-) -> Result<Vec<DirPageWrapper<'a, Clean, Free>>> {
-    let delete_dir_info = pi.get_inode_info()?;
-    if delete_dir_info.get_ino() != pi.get_ino() {
-        pr_info!(
-            "ERROR: delete_dir_info inode {:?} does not match pi inode {:?}\n",
-            delete_dir_info.get_ino(),
-            pi.get_ino()
-        );
-        return Err(EINVAL);
-    }
-    // deallocate pages (if any) belonging to the inode
-    // NOTE: we do this in a series of vectors to reduce the number of
-    // total flushes. Unclear if this saves us time, or if the overhead
-    // of more flushes is less than the time it takes to manage the vecs.
-    // We need to do some evaluation of this
-    let pages = delete_dir_info.get_all_pages()?;
-    let mut unmap_vec = Vec::new();
-    let mut to_dealloc = Vec::new();
-    let mut deallocated = Vec::new();
-    for page in pages.keys() {
-        // the pages have already been removed from the inode's page vector
-        let page = DirPageWrapper::mark_to_unmap(sbi, page)?;
-        unmap_vec.try_push(page)?;
-    }
-    for page in unmap_vec.drain(..) {
-        let page = page.unmap().flush();
-        to_dealloc.try_push(page)?;
-    }
-    let mut to_dealloc = fence_all_vecs!(to_dealloc);
-    for page in to_dealloc.drain(..) {
-        let page = page.dealloc(sbi).flush();
-        deallocated.try_push(page)?;
-    }
-    let deallocated = fence_all_vecs!(deallocated);
-    for page in &deallocated {
-        sbi.page_allocator.dealloc_dir_page(page)?;
-    }
-    let freed_pages = DirPageWrapper::mark_pages_free(deallocated)?;
-    Ok(freed_pages)
-}
+// fn runtime_rmdir_delete_pages<'a>(
+//     sbi: &'a SbInfo,
+//     pi: &InodeWrapper<'a, Clean, UnmapPages, DirInode>,
+// ) -> Result<Vec<DirPageWrapper<'a, Clean, Free>>> {
+//     let delete_dir_info = pi.get_inode_info()?;
+//     if delete_dir_info.get_ino() != pi.get_ino() {
+//         pr_info!(
+//             "ERROR: delete_dir_info inode {:?} does not match pi inode {:?}\n",
+//             delete_dir_info.get_ino(),
+//             pi.get_ino()
+//         );
+//         return Err(EINVAL);
+//     }
+//     // deallocate pages (if any) belonging to the inode
+//     // NOTE: we do this in a series of vectors to reduce the number of
+//     // total flushes. Unclear if this saves us time, or if the overhead
+//     // of more flushes is less than the time it takes to manage the vecs.
+//     // We need to do some evaluation of this
+//     let pages = delete_dir_info.get_all_pages()?;
+//     let mut unmap_vec = Vec::new();
+//     let mut to_dealloc = Vec::new();
+//     let mut deallocated = Vec::new();
+//     for page in pages.keys() {
+//         // the pages have already been removed from the inode's page vector
+//         let page = DirPageWrapper::mark_to_unmap(sbi, page)?;
+//         unmap_vec.try_push(page)?;
+//     }
+//     for page in unmap_vec.drain(..) {
+//         let page = page.unmap().flush();
+//         to_dealloc.try_push(page)?;
+//     }
+//     let mut to_dealloc = fence_all_vecs!(to_dealloc);
+//     for page in to_dealloc.drain(..) {
+//         let page = page.dealloc(sbi).flush();
+//         deallocated.try_push(page)?;
+//     }
+//     let deallocated = fence_all_vecs!(deallocated);
+//     for page in &deallocated {
+//         sbi.page_allocator.dealloc_dir_page(page)?;
+//     }
+//     let freed_pages = DirPageWrapper::mark_pages_free(deallocated)?;
+//     Ok(freed_pages)
+// }
 
 fn squirrelfs_rename<'a>(
     sbi: &'a SbInfo,
@@ -1858,7 +1875,7 @@ pub(crate) fn finish_unlink<'a>(
 ) -> Result<InodeWrapper<'a, Clean, Complete, RegInode>> {
     match sbi.mount_opts.write_type {
         Some(WriteType::Iterator) | None => iterator_finish_unlink(sbi, pi),
-        _ => runtime_finish_unlink(sbi, pi),
+        _ => Err(ENOTSUPP),
     }
 }
 
@@ -1881,51 +1898,51 @@ fn iterator_finish_unlink<'a>(
     }
 }
 
-fn runtime_finish_unlink<'a>(
-    sbi: &'a SbInfo,
-    pi: InodeWrapper<'a, Clean, DecLink, RegInode>,
-) -> Result<InodeWrapper<'a, Clean, Complete, RegInode>> {
-    let result = pi.try_complete_unlink_runtime(sbi)?;
-    if let Ok(result) = result {
-        Ok(result)
-    } else if let Err((pi, mut pages)) = result {
-        // go through each page and deallocate it
-        // we can drain the vector since missing a page will result in
-        // a runtime panic
-        // NOTE: we do this in a series of vectors to reduce the number of
-        // total flushes. Unclear if this saves us time, or if the overhead
-        // of more flushes is less than the time it takes to manage the vecs.
-        // We need to do some evaluation of this
-        init_timing!(dealloc_pages);
-        start_timing!(dealloc_pages);
-        let mut to_dealloc = Vec::new();
+// fn runtime_finish_unlink<'a>(
+//     sbi: &'a SbInfo,
+//     pi: InodeWrapper<'a, Clean, DecLink, RegInode>,
+// ) -> Result<InodeWrapper<'a, Clean, Complete, RegInode>> {
+//     let result = pi.try_complete_unlink_runtime(sbi)?;
+//     if let Ok(result) = result {
+//         Ok(result)
+//     } else if let Err((pi, mut pages)) = result {
+//         // go through each page and deallocate it
+//         // we can drain the vector since missing a page will result in
+//         // a runtime panic
+//         // NOTE: we do this in a series of vectors to reduce the number of
+//         // total flushes. Unclear if this saves us time, or if the overhead
+//         // of more flushes is less than the time it takes to manage the vecs.
+//         // We need to do some evaluation of this
+//         init_timing!(dealloc_pages);
+//         start_timing!(dealloc_pages);
+//         let mut to_dealloc = Vec::new();
 
-        for page in pages.drain(..) {
-            // the pages have already been removed from the inode's page vector
-            let page = page.unmap().flush();
-            to_dealloc.try_push(page)?;
-        }
-        let mut to_dealloc = fence_all_vecs!(to_dealloc);
-        let mut deallocated = Vec::new();
-        for page in to_dealloc.drain(..) {
-            let page = page.dealloc(sbi).flush();
-            deallocated.try_push(page)?;
-        }
-        let deallocated = fence_all_vecs!(deallocated);
-        for page in &deallocated {
-            sbi.page_allocator.dealloc_data_page(page)?;
-        }
-        let freed_pages = DataPageWrapper::mark_pages_free(deallocated)?;
+//         for page in pages.drain(..) {
+//             // the pages have already been removed from the inode's page vector
+//             let page = page.unmap().flush();
+//             to_dealloc.try_push(page)?;
+//         }
+//         let mut to_dealloc = fence_all_vecs!(to_dealloc);
+//         let mut deallocated = Vec::new();
+//         for page in to_dealloc.drain(..) {
+//             let page = page.dealloc(sbi).flush();
+//             deallocated.try_push(page)?;
+//         }
+//         let deallocated = fence_all_vecs!(deallocated);
+//         for page in &deallocated {
+//             sbi.page_allocator.dealloc_data_page(page)?;
+//         }
+//         let freed_pages = DataPageWrapper::mark_pages_free(deallocated)?;
 
-        // pages are now deallocated and we can use the freed pages vector
-        // to deallocate the inode.
-        let pi = pi.runtime_dealloc(freed_pages).flush().fence();
-        end_timing!(DeallocPages, dealloc_pages);
-        Ok(pi)
-    } else {
-        Err(EINVAL)
-    }
-}
+//         // pages are now deallocated and we can use the freed pages vector
+//         // to deallocate the inode.
+//         let pi = pi.runtime_dealloc(freed_pages).flush().fence();
+//         end_timing!(DeallocPages, dealloc_pages);
+//         Ok(pi)
+//     } else {
+//         Err(EINVAL)
+//     }
+// }
 
 fn squirrelfs_symlink<'a>(
     sbi: &'a SbInfo,

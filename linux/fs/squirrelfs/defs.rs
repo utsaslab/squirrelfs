@@ -466,6 +466,105 @@ impl SbInfo {
             }
         }
     }
+
+    pub(crate) fn print_memory_info(&self) {
+        // TODO: ugly casting in here
+        let rb_node_size = core::mem::size_of::<bindings::rb_node>();
+        let inode_num_size = core::mem::size_of::<InodeNum>();
+        let page_num_size = core::mem::size_of::<PageNum>();
+        let filename_size = core::mem::size_of::<[u8; MAX_FILENAME_LEN]>(); // is this just max filename len
+        let dentry_info_size = core::mem::size_of::<DentryInfo>();
+
+        let mut total_estimated_mem_used = 0;
+
+        pr_info!("Printing memory usage estimates\n");
+        match &self.inode_allocator {
+            Some(inode_allocator) => {
+                let num_free = inode_allocator.count_free_inodes();
+
+                let bytes_used = (rb_node_size + inode_num_size) * num_free;
+                pr_info!(
+                    "\tInode allocator: {:?} free, approx. {:?} bytes used ({:?} MiB)\n",
+                    num_free,
+                    bytes_used,
+                    bytes_used / (1024 * 1024)
+                );
+                total_estimated_mem_used += bytes_used;
+            }
+            None => pr_info!("Not initalized\n"),
+        }
+
+        pr_info!("\tPage allocator:\n");
+        match &self.page_allocator {
+            Some(page_allocator) => {
+                let mut total_free_pages = 0;
+                for i in 0..self.cpus as usize {
+                    let free_pages = page_allocator.num_free_pages_on_cpu(i);
+                    if let Some(free_pages) = free_pages {
+                        pr_info!("\t\t\tCPU {:?}: {:?} free pages\n", i, free_pages);
+                        total_free_pages += free_pages;
+                    } else {
+                        pr_info!("\t\t\tCPU {:?}: n/a\n", i);
+                    }
+                }
+                let page_num_size = core::mem::size_of::<PageNum>();
+                let bytes_used = (rb_node_size * page_num_size) * total_free_pages as usize;
+                pr_info!(
+                    "\t\t{:?} total free pages, approximately {:?} bytes used ({:?} MiB)\n",
+                    total_free_pages,
+                    bytes_used,
+                    bytes_used / (1024 * 1024)
+                );
+                total_estimated_mem_used += bytes_used;
+            }
+            None => pr_info!("Not initialized\n"),
+        }
+
+        pr_info!("\tIno dentry tree:\n");
+        let (ino_count, dentry_count) = self.ino_dentry_tree.count_index_entries();
+        let bytes_used = (ino_count * (inode_num_size + rb_node_size) as u64)
+            + (dentry_count * (rb_node_size + filename_size + dentry_info_size) as u64);
+        pr_info!(
+            "\t\t{:?} inodes, {:?} dentries, approximately {:?} bytes used ({:?} MiB)\n",
+            ino_count,
+            dentry_count,
+            bytes_used,
+            bytes_used / (1024 * 1024)
+        );
+        total_estimated_mem_used += bytes_used as usize;
+
+        pr_info!("\tIno data page tree:\n");
+        let (ino_count, page_count) = self.ino_data_page_tree.count_index_entries();
+        let bytes_used = (ino_count * (inode_num_size + rb_node_size) as u64)
+            + (page_count * (rb_node_size + core::mem::size_of::<u64>() + page_num_size) as u64);
+        pr_info!(
+            "\t\t{:?} inodes, {:?} pages, approximately {:?} bytes used ({:?} MiB)\n",
+            ino_count,
+            page_count,
+            bytes_used,
+            bytes_used / (1024 * 1024)
+        );
+        total_estimated_mem_used += bytes_used as usize;
+
+        pr_info!("\tIno dir page tree:\n");
+        let (ino_count, page_count) = self.ino_dir_page_tree.count_index_entries();
+        let bytes_used = (ino_count * (inode_num_size + rb_node_size) as u64)
+            + (page_count * (rb_node_size + core::mem::size_of::<DirPageInfo>()) as u64);
+        pr_info!(
+            "\t\t{:?} inodes, {:?} pages, approximately {:?} bytes used ({:?} MiB)\n",
+            ino_count,
+            page_count,
+            bytes_used,
+            bytes_used / (1024 * 1024)
+        );
+        total_estimated_mem_used += bytes_used as usize;
+
+        pr_info!(
+            "ESTIMATED MEMORY USAGE: {:?} ({:?} MiB)\n",
+            total_estimated_mem_used,
+            total_estimated_mem_used / (1024 * 1024)
+        );
+    }
 }
 
 pub(crate) fn cstr_to_filename_array(cstr: &CStr) -> [u8; MAX_FILENAME_LEN] {

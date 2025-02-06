@@ -5,6 +5,7 @@ use crate::typestate::*;
 use core::ffi;
 use kernel::prelude::*;
 use kernel::{
+    linked_list::List,
     rbtree::RBTree,
     sync::{smutex::Mutex, Arc},
 };
@@ -25,7 +26,7 @@ impl DentryInfo {
         ino: InodeNum,
         virt_addr: Option<*const ffi::c_void>,
         name: [u8; MAX_FILENAME_LEN],
-        is_dir: bool
+        is_dir: bool,
     ) -> Self {
         Self {
             ino,
@@ -91,6 +92,17 @@ impl InoDentryTree {
         Ok(())
     }
 
+    pub(crate) fn insert_inode(
+        &self,
+        ino: InodeNum,
+        dentries: RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>,
+    ) -> Result<()> {
+        let map = Arc::clone(&self.map);
+        let mut map = map.lock();
+        map.try_insert(ino, dentries)?;
+        Ok(())
+    }
+
     pub(crate) fn remove(
         &self,
         ino: InodeNum,
@@ -98,6 +110,33 @@ impl InoDentryTree {
         let map = Arc::clone(&self.map);
         let mut map = map.lock();
         map.remove(&ino)
+    }
+
+    // determine how many entries are in the index
+    pub(crate) fn count_index_entries(&self) -> (u64, u64) {
+        let map = Arc::clone(&self.map);
+        let map = map.lock();
+
+        let mut ino_count = 0;
+        let mut dentry_count = 0;
+
+        let mut iter = map.iter();
+        let mut current = iter.next();
+        while current.is_some() {
+            let (_ino, inner_tree) = current.unwrap();
+            ino_count += 1;
+
+            let mut inner_iter = inner_tree.iter();
+            let mut current_inner = inner_iter.next();
+            while current_inner.is_some() {
+                dentry_count += 1;
+                current_inner = inner_iter.next();
+            }
+
+            current = iter.next();
+        }
+
+        (ino_count, dentry_count)
     }
 }
 
@@ -153,7 +192,7 @@ impl DirPageInfo {
 pub(crate) struct SquirrelFsRegInodeInfo {
     ino: InodeNum,
     num_pages: u64,
-    pages: Arc<Mutex<RBTree<u64, PageNum>>>,
+    pages: Arc<Mutex<Option<RBTree<u64, PageNum>>>>,
 }
 
 impl SquirrelFsRegInodeInfo {
@@ -161,7 +200,7 @@ impl SquirrelFsRegInodeInfo {
         Ok(Self {
             ino,
             num_pages: 0,
-            pages: Arc::try_new(Mutex::new(RBTree::new()))?,
+            pages: Arc::try_new(Mutex::new(Some(RBTree::new())))?,
         })
     }
 
@@ -172,7 +211,7 @@ impl SquirrelFsRegInodeInfo {
     ) -> Result<Self> {
         Ok(Self {
             ino,
-            pages: Arc::try_new(Mutex::new(tree))?,
+            pages: Arc::try_new(Mutex::new(Some(tree)))?,
             num_pages,
         })
     }
@@ -202,7 +241,8 @@ pub(crate) trait InoDataPageMap {
     fn insert_page_iterator(&self, offset: u64, page_no: PageNum) -> Result<()>;
     fn insert_pages<S: WrittenTo>(&self, page_list: DataPageListWrapper<Clean, S>) -> Result<()>;
     fn find(&self, offset: u64) -> Option<PageNum>;
-    fn get_all_pages(&self) -> Result<RBTree<u64, PageNum>>;
+    fn get_all_pages(&self) -> Result<List<Box<LinkedPage>>>;
+    fn take_pages(self) -> Result<RBTree<u64, PageNum>>;
     fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Free>) -> Result<()>;
 }
 
@@ -217,6 +257,7 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     ) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         let offset = page.get_offset();
         pages.try_insert(offset, page.get_page_no())?;
         Ok(())
@@ -228,6 +269,7 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     ) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         let offset = page.get_offset();
         pages.try_insert(offset, page.get_page_no())?;
         Ok(())
@@ -236,6 +278,7 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     fn insert_page_iterator(&self, offset: u64, page_no: PageNum) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         pages.try_insert(offset, page_no)?;
         Ok(())
     }
@@ -243,6 +286,7 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     fn insert_pages<S: WrittenTo>(&self, page_list: DataPageListWrapper<Clean, S>) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         let mut cursor = page_list.get_page_list_cursor();
         let mut current = cursor.current();
         let mut offset = page_list.get_offset();
@@ -260,6 +304,7 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
     fn find(&self, offset: u64) -> Option<PageNum> {
         let pages = Arc::clone(&self.pages);
         let pages = pages.lock();
+        let pages = pages.as_ref().unwrap();
         let result = pages.get(&offset);
         match result {
             Some(page) => Some(*page),
@@ -267,20 +312,28 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
         }
     }
 
-    fn get_all_pages(&self) -> Result<RBTree<u64, PageNum>> {
+    fn get_all_pages(&self) -> Result<List<Box<LinkedPage>>> {
         let pages = Arc::clone(&self.pages);
         let pages = pages.lock();
-        let mut return_tree = RBTree::new();
-        // TODO: can you do this without copying all of the pages?
-        for offset in pages.keys() {
-            return_tree.try_insert(*offset, *pages.get(offset).unwrap())?;
+        let pages = pages.as_ref().unwrap();
+        let mut list = List::new();
+        for page in pages.values() {
+            list.push_back(Box::try_new(LinkedPage::new(*page))?);
         }
+        Ok(list)
+    }
+
+    fn take_pages(self) -> Result<RBTree<u64, PageNum>> {
+        let pages = Arc::clone(&self.pages);
+        let mut pages = pages.lock();
+        let return_tree = pages.take().unwrap();
         Ok(return_tree)
     }
 
     fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Free>) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         let mut cursor = page_list.get_page_list_cursor();
         let mut current = cursor.current();
         while current.is_some() {
@@ -303,7 +356,7 @@ pub(crate) trait InoDirPageMap {
         -> Result<()>;
     fn insert_page_infos(&self, new_pages: RBTree<DirPageInfo, ()>) -> Result<()>;
     fn find_page_with_free_dentry(&self, sbi: &SbInfo) -> Result<Option<DirPageInfo>>;
-    fn get_all_pages(&self) -> Result<RBTree<DirPageInfo, ()>>;
+    fn get_all_pages(&self) -> Result<List<Box<LinkedPage>>>;
     fn delete(&self, page: DirPageInfo) -> Result<()>;
     fn debug_print_pages(&self);
 }
@@ -311,16 +364,19 @@ pub(crate) trait InoDirPageMap {
 #[repr(C)]
 pub(crate) struct SquirrelFsDirInodeInfo {
     ino: InodeNum,
-    pages: Arc<Mutex<RBTree<DirPageInfo, ()>>>,
-    dentries: Arc<Mutex<RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>>>, // dentries: Arc<Mutex<Vec<DentryInfo>>>,
+    pages: Arc<Mutex<Option<RBTree<DirPageInfo, ()>>>>,
+    dentries: Arc<Mutex<Option<RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>>>>, // dentries: Arc<Mutex<Vec<DentryInfo>>>,
 }
 
 impl SquirrelFsDirInodeInfo {
-    pub(crate) fn new(ino: InodeNum, dentries: RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>) -> Result<Self> {
+    pub(crate) fn new(
+        ino: InodeNum,
+        dentries: RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>,
+    ) -> Result<Self> {
         Ok(Self {
             ino,
-            pages: Arc::try_new(Mutex::new(RBTree::new()))?,
-            dentries: Arc::try_new(Mutex::new(dentries))?,
+            pages: Arc::try_new(Mutex::new(Some(RBTree::new())))?,
+            dentries: Arc::try_new(Mutex::new(Some(dentries)))?,
         })
     }
 
@@ -331,13 +387,30 @@ impl SquirrelFsDirInodeInfo {
     ) -> Result<Self> {
         Ok(Self {
             ino,
-            pages: Arc::try_new(Mutex::new(page_tree))?,
-            dentries: Arc::try_new(Mutex::new(dentry_tree))?,
+            pages: Arc::try_new(Mutex::new(Some(page_tree)))?,
+            dentries: Arc::try_new(Mutex::new(Some(dentry_tree)))?,
         })
     }
 
     pub(crate) fn get_ino(&self) -> InodeNum {
         self.ino
+    }
+
+    pub(crate) fn get_pages_and_dentries(
+        self,
+    ) -> (
+        RBTree<DirPageInfo, ()>,
+        RBTree<[u8; MAX_FILENAME_LEN], DentryInfo>,
+    ) {
+        let pages = Arc::clone(&self.pages);
+        let mut pages = pages.lock();
+        let out_pages = pages.take().unwrap();
+
+        let dentries = Arc::clone(&self.dentries);
+        let mut dentries = dentries.lock();
+        let out_dentries = dentries.take().unwrap();
+
+        (out_pages, out_dentries)
     }
 }
 
@@ -352,6 +425,7 @@ impl InoDirPageMap for SquirrelFsDirInodeInfo {
     ) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         // TODO: sort?
         let page_info = DirPageInfo {
             page_no: page.get_page_no(),
@@ -363,6 +437,7 @@ impl InoDirPageMap for SquirrelFsDirInodeInfo {
     fn insert_page_infos(&self, new_pages: RBTree<DirPageInfo, ()>) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         // TODO: sort?
         for (key, value) in new_pages.iter() {
             pages.try_insert(*key, *value)?;
@@ -375,7 +450,8 @@ impl InoDirPageMap for SquirrelFsDirInodeInfo {
     // process trying to add a dentry to it. this method should just add the dentry
     fn find_page_with_free_dentry<'a>(&self, sbi: &SbInfo) -> Result<Option<DirPageInfo>> {
         let pages = Arc::clone(&self.pages);
-        let pages = pages.lock();
+        let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         for page in pages.keys() {
             let p = DirPageWrapper::from_page_no(sbi, page.get_page_no())?;
             if p.has_free_space(sbi)? {
@@ -386,28 +462,30 @@ impl InoDirPageMap for SquirrelFsDirInodeInfo {
         Ok(None)
     }
 
-    // TODO: should this return a linked list?
-    fn get_all_pages(&self) -> Result<RBTree<DirPageInfo, ()>> {
+    fn get_all_pages(&self) -> Result<List<Box<LinkedPage>>> {
         let pages = Arc::clone(&self.pages);
         let pages = pages.lock();
-        let mut return_tree = RBTree::new();
-        // TODO: can you do this without copying all of the pages?
+        let pages = pages.as_ref().unwrap();
+        let mut list = List::new();
         for page in pages.keys() {
-            return_tree.try_insert(page.clone(), ())?;
+            let page_no = page.page_no;
+            list.push_back(Box::try_new(LinkedPage::new(page_no))?);
         }
-        Ok(return_tree)
+        Ok(list)
     }
 
     fn delete(&self, page: DirPageInfo) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         pages.remove(&page);
         Ok(())
     }
 
     fn debug_print_pages(&self) {
         let pages = Arc::clone(&self.pages);
-        let pages = pages.lock();
+        let mut pages = pages.lock();
+        let mut pages = pages.as_mut().unwrap();
         for page in pages.keys() {
             pr_info!("{:?}\n", page);
         }
@@ -442,6 +520,7 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
     fn insert_dentry(&self, dentry: DentryInfo) -> Result<()> {
         let dentries = Arc::clone(&self.dentries);
         let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         dentries.try_insert(dentry.name, dentry)?;
         Ok(())
     }
@@ -452,6 +531,7 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
     ) -> Result<()> {
         let dentries = Arc::clone(&self.dentries);
         let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         for name in new_dentries.keys() {
             // janky hack to fill in the tree. ideally we could do this
             // without iterating.
@@ -467,7 +547,8 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
             return Err(ENAMETOOLONG);
         }
         let dentries = Arc::clone(&self.dentries);
-        let dentries = dentries.lock();
+        let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         // TODO: can you do this without creating the array?
         let mut full_filename = [0; MAX_FILENAME_LEN];
         full_filename[..name.len()].copy_from_slice(name.as_bytes());
@@ -477,7 +558,8 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
 
     fn get_all_dentries(&self) -> Result<Vec<DentryInfo>> {
         let dentries = Arc::clone(&self.dentries);
-        let dentries = dentries.lock();
+        let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         let mut return_vec = Vec::new();
 
         // TODO: use an iterator method
@@ -490,6 +572,7 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
     fn delete_dentry(&self, dentry: DentryInfo) -> Result<()> {
         let dentries = Arc::clone(&self.dentries);
         let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         dentries.remove(&dentry.name);
         Ok(())
     }
@@ -502,6 +585,7 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
         let new_dentry_info = new_dentry.get_dentry_info();
         let dentries = Arc::clone(&self.dentries);
         let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         dentries.try_insert(new_dentry_info.name, new_dentry_info)?;
         dentries.remove(old_dentry_name);
         Ok(())
@@ -516,8 +600,10 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
         let new_dentry_info = new_dentry.get_dentry_info();
         let src_dentries = Arc::clone(&self.dentries);
         let mut src_dentries = src_dentries.lock();
+        let mut src_dentries = src_dentries.as_mut().unwrap();
         let dst_dentries = Arc::clone(&dst_dir.dentries);
         let mut dst_dentries = dst_dentries.lock();
+        let mut dst_dentries = dst_dentries.as_mut().unwrap();
         dst_dentries.try_insert(new_dentry_info.name, new_dentry_info)?;
         src_dentries.remove(old_dentry_name);
         Ok(())
@@ -525,9 +611,14 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
 
     fn has_dentries(&self) -> bool {
         let dentries = Arc::clone(&self.dentries);
-        let dentries = dentries.lock();
+        let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         for d in dentries.keys() {
-            let name = unsafe { CStr::from_char_ptr(d.as_ptr() as *const core::ffi::c_char).to_str().unwrap() };
+            let name = unsafe {
+                CStr::from_char_ptr(d.as_ptr() as *const core::ffi::c_char)
+                    .to_str()
+                    .unwrap()
+            };
             if name != "." && name != ".." {
                 return true;
             }
@@ -537,7 +628,8 @@ impl InoDentryMap for SquirrelFsDirInodeInfo {
 
     fn debug_print_dentries(&self) {
         let dentries = Arc::clone(&self.dentries);
-        let dentries = dentries.lock();
+        let mut dentries = dentries.lock();
+        let mut dentries = dentries.as_mut().unwrap();
         for d in dentries.values() {
             pr_info!("{:?}\n", d);
         }
@@ -570,6 +662,33 @@ impl InoDataPageTree {
         let tree = Arc::clone(&self.tree);
         let mut tree = tree.lock();
         tree.remove(&ino)
+    }
+
+    // determine how many entries are in the index
+    pub(crate) fn count_index_entries(&self) -> (u64, u64) {
+        let tree = Arc::clone(&self.tree);
+        let tree = tree.lock();
+
+        let mut ino_count = 0;
+        let mut page_count = 0;
+
+        let mut iter = tree.iter();
+        let mut current = iter.next();
+        while current.is_some() {
+            let (_ino, inner_tree) = current.unwrap();
+            ino_count += 1;
+
+            let mut inner_iter = inner_tree.iter();
+            let mut current_inner = inner_iter.next();
+            while current_inner.is_some() {
+                page_count += 1;
+                current_inner = inner_iter.next();
+            }
+
+            current = iter.next();
+        }
+
+        (ino_count, page_count)
     }
 }
 
@@ -609,6 +728,33 @@ impl InoDirPageTree {
         let tree = Arc::clone(&self.tree);
         let mut tree = tree.lock();
         tree.remove(&ino)
+    }
+
+    // determine how many entries are in the index
+    pub(crate) fn count_index_entries(&self) -> (u64, u64) {
+        let tree = Arc::clone(&self.tree);
+        let tree = tree.lock();
+
+        let mut ino_count = 0;
+        let mut page_count = 0;
+
+        let mut iter = tree.iter();
+        let mut current = iter.next();
+        while current.is_some() {
+            let (_ino, inner_tree) = current.unwrap();
+            ino_count += 1;
+
+            let mut inner_iter = inner_tree.iter();
+            let mut current_inner = inner_iter.next();
+            while current_inner.is_some() {
+                page_count += 1;
+                current_inner = inner_iter.next();
+            }
+
+            current = iter.next();
+        }
+
+        (ino_count, page_count)
     }
 }
 

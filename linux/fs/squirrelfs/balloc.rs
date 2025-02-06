@@ -108,6 +108,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         let total_pages = dev_pages - start;
         let cpus_u64: u64 = cpus.into();
         let pages_per_cpu = total_pages / cpus_u64;
+        let mut free_pages_at_current_cpu = 0;
         let mut free_lists = Vec::new();
         let mut page_cursor = alloc_pages.cursor_front();
         let mut current_alloc_page = page_cursor.current();
@@ -121,15 +122,17 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                     let current_alloc_page_no = current_alloc_page.get_page_no();
                     if current_page == current_cpu_start + pages_per_cpu {
                         let free_list = PageFreeList {
-                            free_pages: pages_per_cpu,
+                            free_pages: free_pages_at_current_cpu,
                             list: rb_tree,
                         };
                         free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
                         rb_tree = RBTree::new();
                         current_cpu_start += pages_per_cpu;
+                        free_pages_at_current_cpu = 0;
                     }
                     if current_page < current_alloc_page_no {
                         rb_tree.try_insert(current_page, ())?;
+                        free_pages_at_current_cpu += 1;
                         current_page += 1;
                     } else if current_page == current_alloc_page_no {
                         current_page += 1;
@@ -150,7 +153,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
             for current in current_page..dev_pages {
                 if current == (current_cpu_start + pages_per_cpu).try_into()? {
                     let free_list = PageFreeList {
-                        free_pages: pages_per_cpu,
+                        free_pages: free_pages_at_current_cpu,
                         list: rb_tree,
                     };
                     free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
@@ -158,12 +161,13 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
                     current_cpu_start += pages_per_cpu;
                 }
                 rb_tree.try_insert(current.try_into()?, ())?;
+                free_pages_at_current_cpu += 1;
             }
         }
         // if there is only one cpu, we may not have inserted the free list earlier
         if cpus == 1 && free_lists.len() == 0 {
             let free_list = PageFreeList {
-                free_pages: pages_per_cpu,
+                free_pages: free_pages_at_current_cpu,
                 list: rb_tree,
             };
             free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
@@ -341,6 +345,16 @@ impl PerCpuPageAllocator {
             Err(EINVAL)
         } else {
             Ok(())
+        }
+    }
+
+    pub(crate) fn num_free_pages_on_cpu(&self, cpu: usize) -> Option<u64> {
+        if cpu >= self.cpus.try_into().unwrap() {
+            None
+        } else {
+            let free_list = Arc::clone(&self.free_lists[cpu as usize]);
+            let free_list = free_list.lock();
+            Some(free_list.free_pages)
         }
     }
 }
@@ -771,7 +785,8 @@ impl<'a, Op: Initialized> DirPageWrapper<'a, Clean, Op> {
     }
 
     fn get_dir_page(&self, sbi: &SbInfo) -> Result<DirPage<'a>> {
-        let page_addr = unsafe { page_no_to_page(sbi, self.get_page_no())? as *mut SquirrelFsDentry };
+        let page_addr =
+            unsafe { page_no_to_page(sbi, self.get_page_no())? as *mut SquirrelFsDentry };
         let dentries = unsafe { slice::from_raw_parts_mut(page_addr, DENTRIES_PER_PAGE) };
         Ok(DirPage { dentries })
     }
@@ -967,15 +982,10 @@ impl DirPageListWrapper<Clean, ToUnmap> {
     // TODO: this should require an inode in the proper state
     pub(crate) fn get_dir_pages_to_unmap(pi_info: &SquirrelFsDirInodeInfo) -> Result<Self> {
         let pages = pi_info.get_all_pages()?;
-        let iter = pages.keys();
-        let mut v = List::new();
-        for page in iter {
-            v.push_back(Box::try_new(LinkedPage::new(page.get_page_no()))?);
-        }
         Ok(Self {
             state: PhantomData,
             op: PhantomData,
-            pages: v,
+            pages,
         })
     }
 
@@ -2111,10 +2121,10 @@ impl<S: CanWrite> DataPageListWrapper<Clean, S> {
                 let page_no = page.get_page_no();
 
                 // skip over pages at the head of the list that we are not writing to
-                // this only happens if we are writing to an offset beyond the current end of the 
-                // file and have allocated pages to cover the gap; in this case, we should zero 
+                // this only happens if we are writing to an offset beyond the current end of the
+                // file and have allocated pages to cover the gap; in this case, we should zero
                 // these pages to make sure we are not accidentally exposing old data
-                // TODO: a more efficient implementation would be to not allocate these pages 
+                // TODO: a more efficient implementation would be to not allocate these pages
                 // at all and instead have a (volatile?) representation of zeroed pages
                 if get_offset_of_page_no(sbi, page_no)? < page_offset {
                     // TODO: this code is identical to some code in zero_pages -- refactor
@@ -2137,7 +2147,7 @@ impl<S: CanWrite> DataPageListWrapper<Clean, S> {
                             false,
                         );
                     }
-                    
+
                     // these variables don't count pages that need to be zeroed
                     // so we do not update them here to make sure they remain correct
                     // bytes_written += bytes_to_write;
@@ -2244,16 +2254,12 @@ impl DataPageListWrapper<Clean, ToUnmap> {
     // TODO: guard this better
     pub(crate) fn get_data_pages_to_unmap(pi_info: &SquirrelFsRegInodeInfo) -> Result<Self> {
         let pages = pi_info.get_all_pages()?;
-        let mut new_page_list = List::new();
-        for page in pages.values() {
-            new_page_list.push_back(Box::try_new(LinkedPage::new(*page))?);
-        }
         Ok(Self {
             state: PhantomData,
             op: PhantomData,
             offset: 0,
             num_pages: pi_info.get_num_pages(),
-            pages: new_page_list,
+            pages,
         })
     }
 

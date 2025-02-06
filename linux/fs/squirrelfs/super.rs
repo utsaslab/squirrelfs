@@ -176,6 +176,10 @@ impl fs::Type for SquirrelFs {
     fn put_super(sb: &fs::SuperBlock<Self>) {
         let sbi = unsafe { &mut *(sb.s_fs_info() as *mut SbInfo) };
         let persistent_sb = sbi.get_super_block_mut().unwrap();
+
+        // TODO: make this optional?
+        sbi.print_memory_info();
+
         // TODO: safe wrapper around super block
         persistent_sb.set_clean_unmount(true);
         squirrelfs_flush_buffer(persistent_sb, SB_SIZE.try_into().unwrap(), true);
@@ -291,7 +295,7 @@ impl fs::Type for SquirrelFs {
                     )
                 };
                 unsafe { (*inode.get_inner()).i_private = core::ptr::null_mut() };
-                let pages = inode_info.get_all_pages().unwrap();
+                let pages = inode_info.take_pages().unwrap();
                 sbi.ino_data_page_tree.insert_inode(ino, pages).unwrap();
             }
         } else if unsafe { bindings::S_ISDIR(mode.try_into().unwrap()) } {
@@ -313,8 +317,10 @@ impl fs::Type for SquirrelFs {
                     )
                 };
                 unsafe { (*inode.get_inner()).i_private = core::ptr::null_mut() };
-                let pages = inode_info.get_all_pages().unwrap();
+                let (pages, mut dentries) = inode_info.get_pages_and_dentries();
                 sbi.ino_dir_page_tree.insert_inode(ino, pages).unwrap();
+                remove_dot_dentries(&mut dentries);
+                sbi.ino_dentry_tree.insert_inode(ino, dentries).unwrap();
             }
             end_timing!(EvictDirInodePages, evict_dir_inode_pages);
         }

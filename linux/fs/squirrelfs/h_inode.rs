@@ -604,44 +604,44 @@ impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
         }
     }
 
-    // this is horrifying
-    pub(crate) fn try_complete_unlink_runtime(self, sbi: &'a SbInfo) -> 
-        Result<core::result::Result<InodeWrapper<'a, Clean, Complete, RegInode>, (InodeWrapper<'a, Clean, Dealloc, RegInode>, Vec<DataPageWrapper<'a, Clean, ToUnmap>>)>> 
-    {
-        if self.inode.get_link_count() > 0 {
-            Ok(Ok(InodeWrapper {
-                state: PhantomData,
-                op: PhantomData,
-                inode_type: PhantomData,
-                vfs_inode: self.vfs_inode,
-                ino: self.ino,
-                inode: self.inode,
-            }))
-        } else {
-            // get the list of pages associated with this inode and convert them into 
-            // ToUnmap wrappers
-            let info = self.get_inode_info()?;
-            let pages = info.get_all_pages()?;
-            let mut unmap_vec = Vec::new();
-            for page in pages.values() {
-                let p = DataPageWrapper::mark_to_unmap(sbi, *page)?;
-                unmap_vec.try_push(p)?;
-            }
-            Ok(
-                Err(
-                    (InodeWrapper {
-                        state: PhantomData,
-                        op: PhantomData,
-                        inode_type: PhantomData,
-                        vfs_inode: self.vfs_inode,
-                        ino: self.ino,
-                        inode: self.inode,
-                    }, 
-                    unmap_vec)
-                )
-            )
-        }
-    }
+    // // this is horrifying
+    // pub(crate) fn try_complete_unlink_runtime(self, sbi: &'a SbInfo) -> 
+    //     Result<core::result::Result<InodeWrapper<'a, Clean, Complete, RegInode>, (InodeWrapper<'a, Clean, Dealloc, RegInode>, Vec<DataPageWrapper<'a, Clean, ToUnmap>>)>> 
+    // {
+    //     if self.inode.get_link_count() > 0 {
+    //         Ok(Ok(InodeWrapper {
+    //             state: PhantomData,
+    //             op: PhantomData,
+    //             inode_type: PhantomData,
+    //             vfs_inode: self.vfs_inode,
+    //             ino: self.ino,
+    //             inode: self.inode,
+    //         }))
+    //     } else {
+    //         // get the list of pages associated with this inode and convert them into 
+    //         // ToUnmap wrappers
+    //         let info = self.get_inode_info()?;
+    //         let pages = info.get_all_pages()?;
+    //         let mut unmap_vec = Vec::new();
+    //         for page in pages.values() {
+    //             let p = DataPageWrapper::mark_to_unmap(sbi, *page)?;
+    //             unmap_vec.try_push(p)?;
+    //         }
+    //         Ok(
+    //             Err(
+    //                 (InodeWrapper {
+    //                     state: PhantomData,
+    //                     op: PhantomData,
+    //                     inode_type: PhantomData,
+    //                     vfs_inode: self.vfs_inode,
+    //                     ino: self.ino,
+    //                     inode: self.inode,
+    //                 }, 
+    //                 unmap_vec)
+    //             )
+    //         )
+    //     }
+    // }
 
     pub(crate) fn try_complete_unlink_iterator(self) -> 
         Result<
@@ -1083,6 +1083,27 @@ pub(crate) trait InodeAllocator {
 
 pub(crate) struct RBInodeAllocator {
     map: Arc<Mutex<RBTree<InodeNum, ()>>>,
+}
+
+impl RBInodeAllocator {
+    // we could keep track of the free inode count in the 
+    // allocator itself but that would add overhead and this 
+    // is only used for debugging
+    pub(crate) fn count_free_inodes(&self) -> usize {
+        let map = Arc::clone(&self.map);
+        let map = map.lock();
+
+        let mut free_count = 0;
+        let mut iter = map.iter();
+        let mut current = iter.next();
+
+        while current.is_some() {
+            free_count += 1;
+            current = iter.next();
+        }
+
+        free_count
+    }
 }
 
 impl InodeAllocator for RBInodeAllocator {
