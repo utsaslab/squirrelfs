@@ -133,6 +133,44 @@ full_test() {
     done
 }
 
+full_test2() {
+    echo "$FS full"
+    for i in $(seq $ITERATIONS); do 
+        init_mount
+        sleep 5
+        echo -n "Before: " >> $filename/Run$i 
+        cat /proc/meminfo | grep MemAvailable >> $filename/Run$i
+        for j in $(seq 7)
+        do 
+            fill_device $j &
+        done 
+        fill_device 8 
+        # sleep 30
+        df -h
+        df -i
+        echo -n "After: " >> $filename/Run$i
+        cat /proc/meminfo | grep MemAvailable >> $filename/Run$i
+        sudo umount /dev/pmem0
+        echo -n "Before 2: " >> $filename/Run$i 
+        sleep 5
+        if [ $FS = "ext4" ]; then
+            sudo mount -t $FS -o dax /dev/pmem0 /mnt/pmem
+        elif [ $FS = "nova" ]; then 
+            sudo rmmod $FS 
+            sleep 5
+            sudo -E insmod ../linux/fs/$FS/$FS.ko
+            sudo mount -t NOVA /dev/pmem0 /mnt/pmem
+        else 
+            sudo rmmod $FS 
+            sleep 5
+            sudo -E insmod ../linux/fs/$FS/$FS.ko
+            sudo mount -t $FS /dev/pmem0 /mnt/pmem
+        fi
+        sleep 5
+        echo -n "After 2: " >> $filename/Run$i
+    done
+}
+
 full_recovery_test() {
     echo "$FS recovery"
     if [ $FS = "squirrelfs" ]

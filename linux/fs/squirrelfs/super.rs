@@ -325,7 +325,7 @@ impl fs::Type for SquirrelFs {
             end_timing!(EvictDirInodePages, evict_dir_inode_pages);
         }
         unsafe {
-            bindings::truncate_inode_pages(&mut (*inode.get_inner()).i_data, 0);
+            bindings::truncate_inode_pages_final(&mut (*inode.get_inner()).i_data);
             bindings::clear_inode(inode.get_inner());
         }
 

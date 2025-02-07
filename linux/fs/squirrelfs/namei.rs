@@ -360,8 +360,6 @@ pub(crate) fn squirrelfs_iget(
         }
     }
 
-    pr_info!("iget {:?}\n", ino);
-
     // set up the new inode
     let pi = sbi.get_inode_by_ino(ino)?;
 
