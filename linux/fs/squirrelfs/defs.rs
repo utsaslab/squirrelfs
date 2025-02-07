@@ -474,6 +474,8 @@ impl SbInfo {
         let page_num_size = core::mem::size_of::<PageNum>();
         let filename_size = core::mem::size_of::<[u8; MAX_FILENAME_LEN]>(); // is this just max filename len
         let dentry_info_size = core::mem::size_of::<DentryInfo>();
+        let arc_size = core::mem::size_of::<kernel::sync::Arc<kernel::sync::smutex::Mutex<u64>>>();
+        let mutex_size = core::mem::size_of::<kernel::sync::smutex::Mutex<u64>>();
 
         let mut total_estimated_mem_used = 0;
 
@@ -537,12 +539,19 @@ impl SbInfo {
         let (ino_count, page_count) = self.ino_data_page_tree.count_index_entries();
         let bytes_used = (ino_count * (inode_num_size + rb_node_size) as u64)
             + (page_count * (rb_node_size + core::mem::size_of::<u64>() + page_num_size) as u64);
+        let bytes_used_if_in_icache = bytes_used
+            + (ino_count * (arc_size + mutex_size + core::mem::size_of::<u64>() * 2) as u64);
         pr_info!(
             "\t\t{:?} inodes, {:?} pages, approximately {:?} bytes used ({:?} MiB)\n",
             ino_count,
             page_count,
             bytes_used,
             bytes_used / (1024 * 1024)
+        );
+        pr_info!(
+            "\t\tAdditional bytes used if all are in icache: {:?} ({:?} MiB)",
+            bytes_used_if_in_icache,
+            bytes_used_if_in_icache / (1024 * 1024)
         );
         total_estimated_mem_used += bytes_used as usize;
 
@@ -550,6 +559,9 @@ impl SbInfo {
         let (ino_count, page_count) = self.ino_dir_page_tree.count_index_entries();
         let bytes_used = (ino_count * (inode_num_size + rb_node_size) as u64)
             + (page_count * (rb_node_size + core::mem::size_of::<DirPageInfo>()) as u64);
+        let bytes_used_if_in_icache =
+            bytes_used + (ino_count * (arc_size + mutex_size + core::mem::size_of::<u64>()) as u64);
+
         pr_info!(
             "\t\t{:?} inodes, {:?} pages, approximately {:?} bytes used ({:?} MiB)\n",
             ino_count,
@@ -557,6 +569,12 @@ impl SbInfo {
             bytes_used,
             bytes_used / (1024 * 1024)
         );
+        pr_info!(
+            "\t\tAdditional bytes used if all are in icache: {:?} ({:?} MiB)",
+            bytes_used_if_in_icache,
+            bytes_used_if_in_icache / (1024 * 1024)
+        );
+
         total_estimated_mem_used += bytes_used as usize;
 
         pr_info!(
@@ -564,6 +582,11 @@ impl SbInfo {
             total_estimated_mem_used,
             total_estimated_mem_used / (1024 * 1024)
         );
+
+        // if all are in the icache, info data structures take up some addtl space:
+        // +32 bytes for each inode (8 per Arc, 24 per Mutex)
+        // +8 for directories
+        // +16 for regular files
     }
 }
 
