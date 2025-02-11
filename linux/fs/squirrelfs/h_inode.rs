@@ -416,40 +416,40 @@ impl<'a, Type> InodeWrapper<'a, Clean, Start, Type> {
         }
     }
 
-    // TODO: get the number of bytes written from the page itself, somehow?
-    #[allow(dead_code)]
-    pub(crate) fn inc_size_single_page(
-        self,
-        bytes_written: u64,
-        current_offset: u64,
-        _page: StaticDataPageWrapper<'a, Clean, Written>,
-    ) -> (u64, InodeWrapper<'a, Clean, IncSize, Type>) {
-        let total_size = bytes_written + current_offset;
-        // also update the inode's ctime and mtime. the time update may be reordered with the size change
-        // we make no guarantees about ordering of these two updates
-        if let Some(vfs_inode) = self.vfs_inode {
-            let time = unsafe { bindings::current_time(vfs_inode) };
-            self.inode.ctime = time;
-            self.inode.mtime = time;
-        } else {
-            panic!("ERROR: no vfs inode for inode {:?} in dec_link_count\n", self.ino);
-        }
-        if self.inode.size < total_size {
-            self.inode.size = total_size;
-            squirrelfs_flush_buffer(self.inode, mem::size_of::<SquirrelFsInode>(), true);
-        }
-        (
-            self.inode.size,
-            InodeWrapper {
-                state: PhantomData,
-                op: PhantomData,
-                inode_type: PhantomData,
-                vfs_inode: self.vfs_inode,
-                ino: self.ino,
-                inode: self.inode,
-            },
-        )
-    }
+    // // TODO: get the number of bytes written from the page itself, somehow?
+    // #[allow(dead_code)]
+    // pub(crate) fn inc_size_single_page(
+    //     self,
+    //     bytes_written: u64,
+    //     current_offset: u64,
+    //     _page: StaticDataPageWrapper<'a, Clean, Written>,
+    // ) -> (u64, InodeWrapper<'a, Clean, IncSize, Type>) {
+    //     let total_size = bytes_written + current_offset;
+    //     // also update the inode's ctime and mtime. the time update may be reordered with the size change
+    //     // we make no guarantees about ordering of these two updates
+    //     if let Some(vfs_inode) = self.vfs_inode {
+    //         let time = unsafe { bindings::current_time(vfs_inode) };
+    //         self.inode.ctime = time;
+    //         self.inode.mtime = time;
+    //     } else {
+    //         panic!("ERROR: no vfs inode for inode {:?} in dec_link_count\n", self.ino);
+    //     }
+    //     if self.inode.size < total_size {
+    //         self.inode.size = total_size;
+    //         squirrelfs_flush_buffer(self.inode, mem::size_of::<SquirrelFsInode>(), true);
+    //     }
+    //     (
+    //         self.inode.size,
+    //         InodeWrapper {
+    //             state: PhantomData,
+    //             op: PhantomData,
+    //             inode_type: PhantomData,
+    //             vfs_inode: self.vfs_inode,
+    //             ino: self.ino,
+    //             inode: self.inode,
+    //         },
+    //     )
+    // }
 
     // TODO: use the same impl for all inc_size ops with a trait to reconcile 
     // different write types
@@ -604,50 +604,11 @@ impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
         }
     }
 
-    // // this is horrifying
-    // pub(crate) fn try_complete_unlink_runtime(self, sbi: &'a SbInfo) -> 
-    //     Result<core::result::Result<InodeWrapper<'a, Clean, Complete, RegInode>, (InodeWrapper<'a, Clean, Dealloc, RegInode>, Vec<DataPageWrapper<'a, Clean, ToUnmap>>)>> 
-    // {
-    //     if self.inode.get_link_count() > 0 {
-    //         Ok(Ok(InodeWrapper {
-    //             state: PhantomData,
-    //             op: PhantomData,
-    //             inode_type: PhantomData,
-    //             vfs_inode: self.vfs_inode,
-    //             ino: self.ino,
-    //             inode: self.inode,
-    //         }))
-    //     } else {
-    //         // get the list of pages associated with this inode and convert them into 
-    //         // ToUnmap wrappers
-    //         let info = self.get_inode_info()?;
-    //         let pages = info.get_all_pages()?;
-    //         let mut unmap_vec = Vec::new();
-    //         for page in pages.values() {
-    //             let p = DataPageWrapper::mark_to_unmap(sbi, *page)?;
-    //             unmap_vec.try_push(p)?;
-    //         }
-    //         Ok(
-    //             Err(
-    //                 (InodeWrapper {
-    //                     state: PhantomData,
-    //                     op: PhantomData,
-    //                     inode_type: PhantomData,
-    //                     vfs_inode: self.vfs_inode,
-    //                     ino: self.ino,
-    //                     inode: self.inode,
-    //                 }, 
-    //                 unmap_vec)
-    //             )
-    //         )
-    //     }
-    // }
-
     pub(crate) fn try_complete_unlink_iterator(self) -> 
         Result<
             core::result::Result<
                 InodeWrapper<'a, Clean, Complete, RegInode>, 
-                (InodeWrapper<'a, Clean, Dealloc, RegInode>, DataPageListWrapper<Clean, ToUnmap>)
+                (InodeWrapper<'a, Clean, ToDealloc, RegInode>, DataPageListWrapper<Clean, ToUnmap>)
             >
         > {
             // there are still links, so don't delete the inode or its pages
@@ -682,7 +643,7 @@ impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
         }
 }
 
-impl<'a> InodeWrapper<'a, Clean, Dealloc, RegInode> {
+impl<'a> InodeWrapper<'a, Clean, ToDealloc, RegInode> {
     // NOTE: data page wrappers don't actually need to be free, they just need to be in ClearIno
     pub(crate) fn runtime_dealloc(self, _freed_pages: Vec<DataPageWrapper<'a, Clean, Free>>) -> InodeWrapper<'a, Dirty, Complete, RegInode> {
         self.inode.inode_type = InodeType::NONE;
@@ -712,7 +673,7 @@ impl<'a> InodeWrapper<'a, Clean, Dealloc, RegInode> {
 
     // NOTE: data page wrappers don't actually need to be free, they just need to be in ClearIno
     // TODO: combine with runtime version using a trait for the data page wrapper 
-    pub(crate) fn iterator_dealloc(self, _freed_pages: DataPageListWrapper<Clean, Free>) -> InodeWrapper<'a, Dirty, Complete, RegInode> {
+    pub(crate) fn iterator_dealloc(self, _freed_pages: DataPageListWrapper<Clean, Dealloc>) -> InodeWrapper<'a, Dirty, Complete, RegInode> {
         // link count should already be 0
         assert!(self.inode.link_count == 0);
         unsafe { dealloc_pm_inode(self.inode)} ;
@@ -837,7 +798,7 @@ impl<'a, Op: DeleteDir> InodeWrapper<'a, Clean, Op, DirInode> {
 impl<'a> InodeWrapper<'a, Clean, UnmapPages, DirInode> {
     // NOTE: data page wrappers don't actually need to be free, they just need to be in ClearIno
     // any state after ClearIno is fine
-    pub(crate) fn iterator_dealloc(self, _freed_pages: DirPageListWrapper<Clean, Free>) -> InodeWrapper<'a, Dirty, Complete, DirInode> {
+    pub(crate) fn iterator_dealloc(self, _freed_pages: DirPageListWrapper<Clean, Dealloc>) -> InodeWrapper<'a, Dirty, Complete, DirInode> {
         self.inode.inode_type = InodeType::NONE;
         // link count should 2 for ./.. but we don't store those in durable PM, so it's safe 
         // to just clear the link count if it is in fact 2

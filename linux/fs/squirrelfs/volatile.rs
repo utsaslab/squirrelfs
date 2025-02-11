@@ -234,16 +234,16 @@ pub(crate) trait InoDataPageMap {
         &self,
         page: &DataPageWrapper<'a, Clean, State>,
     ) -> Result<()>;
-    fn insert_unchecked<'a, State: Initialized>(
-        &self,
-        page: &StaticDataPageWrapper<'a, Clean, State>,
-    ) -> Result<()>;
+    // fn insert_unchecked<'a, State: Initialized>(
+    //     &self,
+    //     page: &StaticDataPageWrapper<'a, Clean, State>,
+    // ) -> Result<()>;
     fn insert_page_iterator(&self, offset: u64, page_no: PageNum) -> Result<()>;
     fn insert_pages<S: WrittenTo>(&self, page_list: DataPageListWrapper<Clean, S>) -> Result<()>;
     fn find(&self, offset: u64) -> Option<PageNum>;
     fn get_all_pages(&self) -> Result<List<Box<LinkedPage>>>;
     fn take_pages(self) -> Result<RBTree<u64, PageNum>>;
-    fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Free>) -> Result<()>;
+    fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Dealloc>) -> Result<()>;
 }
 
 impl InoDataPageMap for SquirrelFsRegInodeInfo {
@@ -263,17 +263,17 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
         Ok(())
     }
 
-    fn insert_unchecked<'a, State: Initialized>(
-        &self,
-        page: &StaticDataPageWrapper<'a, Clean, State>,
-    ) -> Result<()> {
-        let pages = Arc::clone(&self.pages);
-        let mut pages = pages.lock();
-        let mut pages = pages.as_mut().unwrap();
-        let offset = page.get_offset();
-        pages.try_insert(offset, page.get_page_no())?;
-        Ok(())
-    }
+    // fn insert_unchecked<'a, State: Initialized>(
+    //     &self,
+    //     page: &StaticDataPageWrapper<'a, Clean, State>,
+    // ) -> Result<()> {
+    //     let pages = Arc::clone(&self.pages);
+    //     let mut pages = pages.lock();
+    //     let mut pages = pages.as_mut().unwrap();
+    //     let offset = page.get_offset();
+    //     pages.try_insert(offset, page.get_page_no())?;
+    //     Ok(())
+    // }
 
     fn insert_page_iterator(&self, offset: u64, page_no: PageNum) -> Result<()> {
         let pages = Arc::clone(&self.pages);
@@ -330,7 +330,7 @@ impl InoDataPageMap for SquirrelFsRegInodeInfo {
         Ok(return_tree)
     }
 
-    fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Free>) -> Result<()> {
+    fn remove_pages(&self, page_list: &DataPageListWrapper<Clean, Dealloc>) -> Result<()> {
         let pages = Arc::clone(&self.pages);
         let mut pages = pages.lock();
         let mut pages = pages.as_mut().unwrap();

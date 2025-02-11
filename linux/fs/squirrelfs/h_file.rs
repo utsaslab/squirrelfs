@@ -185,23 +185,24 @@ fn squirrelfs_write<'a>(
             Ok((bytes_written, pi))
         }
         Some(WriteType::SinglePage) => {
-            let count = if SQUIRRELFS_PAGESIZE < len {
-                SQUIRRELFS_PAGESIZE
-            } else {
-                len
-            };
-            let (data_page, bytes_written) =
-                single_page_write(sbi, &pi, &pi_info, reader, count, offset)?;
+            Err(ENOTSUPP)
+            // let count = if SQUIRRELFS_PAGESIZE < len {
+            //     SQUIRRELFS_PAGESIZE
+            // } else {
+            //     len
+            // };
+            // let (data_page, bytes_written) =
+            //     single_page_write(sbi, &pi, &pi_info, reader, count, offset)?;
 
-            let (inode_size, pi) =
-                pi.inc_size_single_page(bytes_written.try_into()?, offset, data_page);
+            // let (inode_size, pi) =
+            //     pi.inc_size_single_page(bytes_written.try_into()?, offset, data_page);
 
-            // update the VFS inode's size
-            inode.i_size_write(inode_size.try_into()?);
-            inode.update_ctime_and_mtime();
-            let pi = pi.update_ctime_and_mtime(inode.get_mtime()).flush().fence();
-            end_timing!(FullWrite, full_write);
-            Ok((bytes_written, pi))
+            // // update the VFS inode's size
+            // inode.i_size_write(inode_size.try_into()?);
+            // inode.update_ctime_and_mtime();
+            // let pi = pi.update_ctime_and_mtime(inode.get_mtime()).flush().fence();
+            // end_timing!(FullWrite, full_write);
+            // Ok((bytes_written, pi))
         }
         Some(WriteType::RuntimeCheck) => {
             let (page_list, bytes_written) =
@@ -218,64 +219,64 @@ fn squirrelfs_write<'a>(
     }
 }
 
-fn single_page_write<'a>(
-    sbi: &'a SbInfo,
-    pi: &InodeWrapper<'a, Clean, Start, RegInode>,
-    pi_info: &SquirrelFsRegInodeInfo,
-    reader: &mut impl IoBufferReader,
-    count: u64,
-    offset: u64,
-) -> Result<(StaticDataPageWrapper<'a, Clean, Written>, u64)> {
-    // let offset: usize = offset.try_into()?;
+// fn single_page_write<'a>(
+//     sbi: &'a SbInfo,
+//     pi: &InodeWrapper<'a, Clean, Start, RegInode>,
+//     pi_info: &SquirrelFsRegInodeInfo,
+//     reader: &mut impl IoBufferReader,
+//     count: u64,
+//     offset: u64,
+// ) -> Result<(StaticDataPageWrapper<'a, Clean, Written>, u64)> {
+//     // let offset: usize = offset.try_into()?;
 
-    // this is the value of the `offset` field of the page that
-    // we want to write to
-    let page_offset = page_offset(offset)?;
+//     // this is the value of the `offset` field of the page that
+//     // we want to write to
+//     let page_offset = page_offset(offset)?;
 
-    // does this page exist yet? if not, allocate it
-    init_timing!(write_lookup_page);
-    start_timing!(write_lookup_page);
-    let result = pi_info.find(page_offset);
-    end_timing!(WriteLookupPage, write_lookup_page);
-    let data_page = if let Some(page_no) = result {
-        StaticDataPageWrapper::from_page_no(sbi, page_no)?
-    } else {
-        init_timing!(write_alloc_page);
-        start_timing!(write_alloc_page);
-        let page = StaticDataPageWrapper::alloc_data_page(sbi, offset)?
-            .flush()
-            .fence();
-        let page = page.set_data_page_backpointer(&pi).flush().fence();
-        // add page to the index
-        // this is safe to do here because we hold a lock on this inode
-        pi_info.insert_unchecked(&page)?;
-        end_timing!(WriteAllocPage, write_alloc_page);
-        page
-    };
-    let offset_in_page = offset - page_offset;
-    let bytes_after_offset = SQUIRRELFS_PAGESIZE - offset_in_page;
-    // either write the rest of the count or write to the end of the page
-    let to_write = if count < bytes_after_offset {
-        count
-    } else {
-        bytes_after_offset
-    };
-    init_timing!(write_to_page);
-    start_timing!(write_to_page);
-    let (bytes_written, data_page) =
-        data_page.write_to_page(sbi, reader, offset_in_page, to_write)?;
-    let data_page = data_page.fence();
-    end_timing!(WriteToPage, write_to_page);
+//     // does this page exist yet? if not, allocate it
+//     init_timing!(write_lookup_page);
+//     start_timing!(write_lookup_page);
+//     let result = pi_info.find(page_offset);
+//     end_timing!(WriteLookupPage, write_lookup_page);
+//     let data_page = if let Some(page_no) = result {
+//         StaticDataPageWrapper::from_page_no(sbi, page_no)?
+//     } else {
+//         init_timing!(write_alloc_page);
+//         start_timing!(write_alloc_page);
+//         let page = StaticDataPageWrapper::alloc_data_page(sbi, offset)?
+//             .flush()
+//             .fence();
+//         let page = page.set_data_page_backpointer(&pi).flush().fence();
+//         // add page to the index
+//         // this is safe to do here because we hold a lock on this inode
+//         pi_info.insert_unchecked(&page)?;
+//         end_timing!(WriteAllocPage, write_alloc_page);
+//         page
+//     };
+//     let offset_in_page = offset - page_offset;
+//     let bytes_after_offset = SQUIRRELFS_PAGESIZE - offset_in_page;
+//     // either write the rest of the count or write to the end of the page
+//     let to_write = if count < bytes_after_offset {
+//         count
+//     } else {
+//         bytes_after_offset
+//     };
+//     init_timing!(write_to_page);
+//     start_timing!(write_to_page);
+//     let (bytes_written, data_page) =
+//         data_page.write_to_page(sbi, reader, offset_in_page, to_write)?;
+//     let data_page = data_page.fence();
+//     end_timing!(WriteToPage, write_to_page);
 
-    if bytes_written < to_write {
-        pr_info!(
-            "WARNING: wrote {:?} out of {:?} bytes\n",
-            bytes_written,
-            to_write
-        );
-    }
-    Ok((data_page, bytes_written))
-}
+//     if bytes_written < to_write {
+//         pr_info!(
+//             "WARNING: wrote {:?} out of {:?} bytes\n",
+//             bytes_written,
+//             to_write
+//         );
+//     }
+//     Ok((data_page, bytes_written))
+// }
 
 fn runtime_checked_write<'a>(
     sbi: &'a SbInfo,

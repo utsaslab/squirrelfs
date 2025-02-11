@@ -36,10 +36,10 @@ pub(crate) trait PageAllocator {
     where
         Self: Sized;
     fn alloc_page(&self) -> Result<PageNum>;
-    fn dealloc_data_page<'a>(&self, page: &DataPageWrapper<'a, Clean, Dealloc>) -> Result<()>;
-    fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Free>) -> Result<()>;
+    // fn dealloc_data_page<'a>(&self, page: &DataPageWrapper<'a, Clean, Dealloc>) -> Result<()>;
+    fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Dealloc>) -> Result<()>;
     fn dealloc_dir_page<'a>(&self, page: &DirPageWrapper<'a, Clean, Dealloc>) -> Result<()>;
-    fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()>;
+    fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Dealloc>) -> Result<()>;
 }
 
 // represents one CPU's pool of pages
@@ -252,17 +252,17 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         }
     }
 
-    fn dealloc_data_page<'a>(&self, page: &DataPageWrapper<'a, Clean, Dealloc>) -> Result<()> {
-        if let Some(allocator) = self {
-            let page_no = page.get_page_no();
-            allocator.dealloc_page(page_no)
-        } else {
-            pr_info!("ERROR: page allocator is uninitialized\n");
-            Err(EINVAL)
-        }
-    }
+    // fn dealloc_data_page<'a>(&self, page: &DataPageWrapper<'a, Clean, Dealloc>) -> Result<()> {
+    //     if let Some(allocator) = self {
+    //         let page_no = page.get_page_no();
+    //         allocator.dealloc_page(page_no)
+    //     } else {
+    //         pr_info!("ERROR: page allocator is uninitialized\n");
+    //         Err(EINVAL)
+    //     }
+    // }
 
-    fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Free>) -> Result<()> {
+    fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Dealloc>) -> Result<()> {
         if let Some(allocator) = self {
             let mut page_list = pages.get_page_list_cursor();
             let mut page = page_list.current();
@@ -294,7 +294,7 @@ impl PageAllocator for Option<PerCpuPageAllocator> {
         }
     }
 
-    fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()> {
+    fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Dealloc>) -> Result<()> {
         if let Some(allocator) = self {
             let mut page_list = pages.get_page_list_cursor();
             let mut page = page_list.current();
@@ -860,32 +860,32 @@ impl<'a, Op> DirPageWrapper<'a, Dirty, Op> {
     }
 }
 
-// impl<'a> DirPageWrapper<'a, Clean, Recovery> {
-//     pub(crate) unsafe fn get_recovery_page(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
-//         // use the unchecked variant because the pages may be invalid
-//         let ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page_no)? };
-//         Ok(DirPageWrapper {
-//             state: PhantomData,
-//             op: PhantomData,
-//             page_no: page_no,
-//             page: CheckedPage {
-//                 drop_type: DropType::Panic,
-//                 page: Some(ph),
-//             },
-//         })
-//     }
+impl<'a> DirPageWrapper<'a, Clean, Recovery> {
+    pub(crate) unsafe fn get_recovery_page(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
+        // use the unchecked variant because the pages may be invalid
+        let ph = unsafe { unchecked_new_page_no_to_dir_header(sbi, page_no)? };
+        Ok(DirPageWrapper {
+            state: PhantomData,
+            op: PhantomData,
+            page_no: page_no,
+            page: CheckedPage {
+                drop_type: DropType::Panic,
+                page: Some(ph),
+            },
+        })
+    }
 
-//     pub(crate) fn recovery_dealloc(mut self, sbi: &SbInfo) -> DirPageWrapper<'a, Dirty, Free> {
-//         unsafe { self.page.dealloc(sbi) };
-//         let page = self.take_and_make_drop_safe();
-//         DirPageWrapper {
-//             state: PhantomData,
-//             op: PhantomData,
-//             page_no: self.page_no,
-//             page,
-//         }
-//     }
-// }
+    pub(crate) fn recovery_dealloc(mut self, sbi: &SbInfo) -> DirPageWrapper<'a, Dirty, Free> {
+        unsafe { self.page.dealloc(sbi) };
+        let page = self.take_and_make_drop_safe();
+        DirPageWrapper {
+            state: PhantomData,
+            op: PhantomData,
+            page_no: self.page_no,
+            page,
+        }
+    }
+}
 
 impl DirPageListWrapper<Clean, Recovery> {
     pub(crate) unsafe fn get_recovery_page(sbi: &SbInfo, page_no: PageNum) -> Result<Self> {
@@ -1030,15 +1030,15 @@ impl DirPageListWrapper<Clean, ClearIno> {
     }
 }
 
-impl DirPageListWrapper<Clean, Dealloc> {
-    pub(crate) fn mark_free(self) -> DirPageListWrapper<Clean, Free> {
-        DirPageListWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            pages: self.pages,
-        }
-    }
-}
+// impl DirPageListWrapper<Clean, Dealloc> {
+//     pub(crate) fn mark_free(self) -> DirPageListWrapper<Clean, Free> {
+//         DirPageListWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             pages: self.pages,
+//         }
+//     }
+// }
 
 impl<Op> DirPageListWrapper<InFlight, Op> {
     pub(crate) fn fence(self) -> DirPageListWrapper<Clean, Op> {
@@ -1237,171 +1237,171 @@ unsafe fn unchecked_new_page_no_to_data_header(
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub(crate) struct StaticDataPageWrapper<'a, State, Op> {
-    state: PhantomData<State>,
-    op: PhantomData<Op>,
-    page_no: PageNum,
-    page: &'a mut DataPageHeader,
-}
+// #[allow(dead_code)]
+// #[derive(Debug)]
+// pub(crate) struct StaticDataPageWrapper<'a, State, Op> {
+//     state: PhantomData<State>,
+//     op: PhantomData<Op>,
+//     page_no: PageNum,
+//     page: &'a mut DataPageHeader,
+// }
 
-impl<'a, State, Op> PmObjWrapper for StaticDataPageWrapper<'a, State, Op> {}
+// impl<'a, State, Op> PmObjWrapper for StaticDataPageWrapper<'a, State, Op> {}
 
-// TODO: we may be able to combine some DataPageWrapper methods with DirPageWrapper methods
-// by making them implement some shared trait - but need to be careful of dynamic dispatch.
-// dynamic dispatch may or may not be safe for us there
-#[allow(dead_code)]
-impl<'a, State, Op> StaticDataPageWrapper<'a, State, Op> {
-    pub(crate) fn get_page_no(&self) -> PageNum {
-        self.page_no
-    }
+// // TODO: we may be able to combine some DataPageWrapper methods with DirPageWrapper methods
+// // by making them implement some shared trait - but need to be careful of dynamic dispatch.
+// // dynamic dispatch may or may not be safe for us there
+// #[allow(dead_code)]
+// impl<'a, State, Op> StaticDataPageWrapper<'a, State, Op> {
+//     pub(crate) fn get_page_no(&self) -> PageNum {
+//         self.page_no
+//     }
 
-    pub(crate) fn get_offset(&self) -> u64 {
-        self.page.offset
-    }
+//     pub(crate) fn get_offset(&self) -> u64 {
+//         self.page.offset
+//     }
 
-    pub(crate) fn get_ino(&self) -> InodeNum {
-        self.page.ino
-    }
-}
+//     pub(crate) fn get_ino(&self) -> InodeNum {
+//         self.page.ino
+//     }
+// }
 
-#[allow(dead_code)]
-impl<'a> StaticDataPageWrapper<'a, Dirty, Alloc> {
-    /// Allocate a new page and set it to be a directory page.
-    /// Does NOT flush the allocated page.
-    pub(crate) fn alloc_data_page(sbi: &'a SbInfo, offset: u64) -> Result<Self> {
-        let (ph, page_no) = unsafe { DataPageHeader::alloc(sbi, Some(offset))? };
-        Ok(StaticDataPageWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            page_no,
-            page: ph,
-        })
-    }
-}
+// #[allow(dead_code)]
+// impl<'a> StaticDataPageWrapper<'a, Dirty, Alloc> {
+//     /// Allocate a new page and set it to be a directory page.
+//     /// Does NOT flush the allocated page.
+//     pub(crate) fn alloc_data_page(sbi: &'a SbInfo, offset: u64) -> Result<Self> {
+//         let (ph, page_no) = unsafe { DataPageHeader::alloc(sbi, Some(offset))? };
+//         Ok(StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no,
+//             page: ph,
+//         })
+//     }
+// }
 
-impl<'a> StaticDataPageWrapper<'a, Clean, Writeable> {
-    /// This method returns a DataPageWrapper ONLY if the page is initialized
-    /// Otherwise it returns an error
-    #[allow(dead_code)]
-    pub(crate) fn from_page_no(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
-        let ph = unsafe { page_no_to_data_header(&sbi, page_no)? };
-        if !ph.is_initialized() {
-            pr_info!("ERROR: page {:?} is uninitialized\n", page_no);
-            Err(EPERM)
-        } else {
-            Ok(Self {
-                state: PhantomData,
-                op: PhantomData,
-                page_no,
-                page: ph,
-            })
-        }
-    }
+// impl<'a> StaticDataPageWrapper<'a, Clean, Writeable> {
+//     /// This method returns a DataPageWrapper ONLY if the page is initialized
+//     /// Otherwise it returns an error
+//     #[allow(dead_code)]
+//     pub(crate) fn from_page_no(sbi: &'a SbInfo, page_no: PageNum) -> Result<Self> {
+//         let ph = unsafe { page_no_to_data_header(&sbi, page_no)? };
+//         if !ph.is_initialized() {
+//             pr_info!("ERROR: page {:?} is uninitialized\n", page_no);
+//             Err(EPERM)
+//         } else {
+//             Ok(Self {
+//                 state: PhantomData,
+//                 op: PhantomData,
+//                 page_no,
+//                 page: ph,
+//             })
+//         }
+//     }
 
-    #[allow(dead_code)]
-    pub(crate) fn read_from_page(
-        &self,
-        sbi: &SbInfo,
-        writer: &mut impl IoBufferWriter,
-        offset: u64,
-        len: u64,
-    ) -> Result<u64> {
-        let ptr = get_page_addr(sbi, self.page_no)? as *mut u8;
-        unsafe { read_from_page(writer, ptr, offset, len) }
-    }
+//     #[allow(dead_code)]
+//     pub(crate) fn read_from_page(
+//         &self,
+//         sbi: &SbInfo,
+//         writer: &mut impl IoBufferWriter,
+//         offset: u64,
+//         len: u64,
+//     ) -> Result<u64> {
+//         let ptr = get_page_addr(sbi, self.page_no)? as *mut u8;
+//         unsafe { read_from_page(writer, ptr, offset, len) }
+//     }
 
-    // TODO: define an internal implementation of IoBufferWriter that does not use
-    // user-compatible functions to read data
-    #[allow(dead_code)]
-    pub(crate) fn read_from_page_raw(&self, sbi: &SbInfo, offset: u64, len: u64) -> Result<&[u8]> {
-        if len + offset > SQUIRRELFS_PAGESIZE {
-            Err(ENOSPC)
-        } else {
-            // TODO: safety notes
-            let ptr = get_page_addr(sbi, self.page_no)? as *mut u8;
-            let ptr = unsafe { ptr.offset(offset.try_into()?) };
-            Ok(unsafe { slice::from_raw_parts(ptr, len.try_into()?) })
-        }
-    }
+//     // TODO: define an internal implementation of IoBufferWriter that does not use
+//     // user-compatible functions to read data
+//     #[allow(dead_code)]
+//     pub(crate) fn read_from_page_raw(&self, sbi: &SbInfo, offset: u64, len: u64) -> Result<&[u8]> {
+//         if len + offset > SQUIRRELFS_PAGESIZE {
+//             Err(ENOSPC)
+//         } else {
+//             // TODO: safety notes
+//             let ptr = get_page_addr(sbi, self.page_no)? as *mut u8;
+//             let ptr = unsafe { ptr.offset(offset.try_into()?) };
+//             Ok(unsafe { slice::from_raw_parts(ptr, len.try_into()?) })
+//         }
+//     }
 
-    #[allow(dead_code)]
-    pub(crate) fn write_to_page(
-        self,
-        sbi: &SbInfo,
-        reader: &mut impl IoBufferReader,
-        offset: u64,
-        len: u64,
-    ) -> Result<(u64, StaticDataPageWrapper<'a, InFlight, Written>)> {
-        let ptr = get_page_addr(sbi, self.page_no)? as *mut u8;
-        let len = unsafe { write_to_page(reader, ptr, offset, len)? };
-        Ok((
-            len,
-            StaticDataPageWrapper {
-                state: PhantomData,
-                op: PhantomData,
-                page_no: self.page_no,
-                page: self.page,
-            },
-        ))
-    }
-}
+//     #[allow(dead_code)]
+//     pub(crate) fn write_to_page(
+//         self,
+//         sbi: &SbInfo,
+//         reader: &mut impl IoBufferReader,
+//         offset: u64,
+//         len: u64,
+//     ) -> Result<(u64, StaticDataPageWrapper<'a, InFlight, Written>)> {
+//         let ptr = get_page_addr(sbi, self.page_no)? as *mut u8;
+//         let len = unsafe { write_to_page(reader, ptr, offset, len)? };
+//         Ok((
+//             len,
+//             StaticDataPageWrapper {
+//                 state: PhantomData,
+//                 op: PhantomData,
+//                 page_no: self.page_no,
+//                 page: self.page,
+//             },
+//         ))
+//     }
+// }
 
-impl<'a> StaticDataPageWrapper<'a, Clean, Alloc> {
-    #[allow(dead_code)]
-    pub(crate) fn set_data_page_backpointer<S: StartOrAlloc>(
-        self,
-        inode: &InodeWrapper<'a, Clean, S, RegInode>,
-    ) -> StaticDataPageWrapper<'a, Dirty, Writeable> {
-        unsafe { self.page.set_backpointer(inode.get_ino()) };
-        StaticDataPageWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            page_no: self.page_no,
-            page: self.page,
-        }
-    }
-}
+// impl<'a> StaticDataPageWrapper<'a, Clean, Alloc> {
+//     #[allow(dead_code)]
+//     pub(crate) fn set_data_page_backpointer<S: StartOrAlloc>(
+//         self,
+//         inode: &InodeWrapper<'a, Clean, S, RegInode>,
+//     ) -> StaticDataPageWrapper<'a, Dirty, Writeable> {
+//         unsafe { self.page.set_backpointer(inode.get_ino()) };
+//         StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: self.page_no,
+//             page: self.page,
+//         }
+//     }
+// }
 
-impl<'a, Op> StaticDataPageWrapper<'a, Dirty, Op> {
-    #[allow(dead_code)]
-    pub(crate) fn flush(self) -> StaticDataPageWrapper<'a, InFlight, Op> {
-        squirrelfs_flush_buffer(self.page, mem::size_of::<DataPageHeader>(), false);
-        StaticDataPageWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            page_no: self.page_no,
-            page: self.page,
-        }
-    }
-}
+// impl<'a, Op> StaticDataPageWrapper<'a, Dirty, Op> {
+//     #[allow(dead_code)]
+//     pub(crate) fn flush(self) -> StaticDataPageWrapper<'a, InFlight, Op> {
+//         squirrelfs_flush_buffer(self.page, mem::size_of::<DataPageHeader>(), false);
+//         StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: self.page_no,
+//             page: self.page,
+//         }
+//     }
+// }
 
-impl<'a, Op> StaticDataPageWrapper<'a, InFlight, Op> {
-    #[allow(dead_code)]
-    pub(crate) fn fence(self) -> StaticDataPageWrapper<'a, Clean, Op> {
-        sfence();
-        StaticDataPageWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            page_no: self.page_no,
-            page: self.page,
-        }
-    }
+// impl<'a, Op> StaticDataPageWrapper<'a, InFlight, Op> {
+//     #[allow(dead_code)]
+//     pub(crate) fn fence(self) -> StaticDataPageWrapper<'a, Clean, Op> {
+//         sfence();
+//         StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: self.page_no,
+//             page: self.page,
+//         }
+//     }
 
-    /// Safety: this is only safe to use if it is immediately preceded or
-    /// followed by an sfence call. The ONLY place it should be used is in the
-    /// macros to fence all objects in a vector.
-    #[allow(dead_code)]
-    pub(crate) unsafe fn fence_unsafe(self) -> StaticDataPageWrapper<'a, Clean, Op> {
-        StaticDataPageWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            page_no: self.page_no,
-            page: self.page,
-        }
-    }
-}
+//     /// Safety: this is only safe to use if it is immediately preceded or
+//     /// followed by an sfence call. The ONLY place it should be used is in the
+//     /// macros to fence all objects in a vector.
+//     #[allow(dead_code)]
+//     pub(crate) unsafe fn fence_unsafe(self) -> StaticDataPageWrapper<'a, Clean, Op> {
+//         StaticDataPageWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             page_no: self.page_no,
+//             page: self.page,
+//         }
+//     }
+// }
 
 // impl<'a> StaticDataPageWrapper<'a, Clean, Recovery> {
 //     // SAFETY: this function is only safe to call on orphaned pages during recovery.
@@ -2308,17 +2308,17 @@ impl DataPageListWrapper<Clean, ClearIno> {
     }
 }
 
-impl DataPageListWrapper<Clean, Dealloc> {
-    pub(crate) fn mark_free(self) -> DataPageListWrapper<Clean, Free> {
-        DataPageListWrapper {
-            state: PhantomData,
-            op: PhantomData,
-            offset: self.offset,
-            num_pages: self.num_pages,
-            pages: self.pages,
-        }
-    }
-}
+// impl DataPageListWrapper<Clean, Dealloc> {
+//     pub(crate) fn mark_free(self) -> DataPageListWrapper<Clean, Free> {
+//         DataPageListWrapper {
+//             state: PhantomData,
+//             op: PhantomData,
+//             offset: self.offset,
+//             num_pages: self.num_pages,
+//             pages: self.pages,
+//         }
+//     }
+// }
 
 impl DataPageListWrapper<Clean, Recovery> {
     pub(crate) unsafe fn get_recovery_page(sbi: &SbInfo, page_no: PageNum) -> Result<Self> {

@@ -31,6 +31,7 @@ pub(crate) struct DecSize {}
 pub(crate) struct ClearIno {}
 pub(crate) struct DecLink {}
 pub(crate) struct Dealloc {}
+pub(crate) struct ToDealloc {}
 pub(crate) struct ToUnmap {}
 pub(crate) struct SetRenamePointer {}
 pub(crate) struct InitRenamePointer {}

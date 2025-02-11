@@ -822,7 +822,7 @@ pub(crate) fn rmdir_delete_pages<'a>(
 fn iterator_rmdir_delete_pages<'a>(
     sbi: &'a SbInfo,
     pi: &InodeWrapper<'a, Clean, UnmapPages, DirInode>,
-) -> Result<DirPageListWrapper<Clean, Free>> {
+) -> Result<DirPageListWrapper<Clean, Dealloc>> {
     let delete_dir_info = pi.get_inode_info()?;
     if delete_dir_info.get_ino() != pi.get_ino() {
         pr_info!(
@@ -833,7 +833,7 @@ fn iterator_rmdir_delete_pages<'a>(
         return Err(EINVAL);
     }
     let pages = DirPageListWrapper::get_dir_pages_to_unmap(delete_dir_info)?;
-    let pages = pages.unmap(sbi)?.fence().dealloc(sbi)?.fence().mark_free();
+    let pages = pages.unmap(sbi)?.fence().dealloc(sbi)?.fence();
     sbi.page_allocator.dealloc_dir_page_list(&pages)?;
     Ok(pages)
 }
@@ -1887,7 +1887,7 @@ fn iterator_finish_unlink<'a>(
         Ok(result)
     } else if let Err((pi, pages)) = result {
         // no links left - we need to deallocate all of the pages
-        let pages = pages.unmap(sbi)?.fence().dealloc(sbi)?.fence().mark_free();
+        let pages = pages.unmap(sbi)?.fence().dealloc(sbi)?.fence();
         sbi.page_allocator.dealloc_data_page_list(&pages)?;
         let pi = pi.iterator_dealloc(pages).flush().fence();
         Ok(pi)
@@ -2043,7 +2043,7 @@ fn squirrelfs_truncate<'a>(
             let pi_info = pi.get_inode_info()?;
             // then free the pages
             let pages = pages.unmap(sbi)?.fence();
-            let pages = pages.dealloc(sbi)?.fence().mark_free();
+            let pages = pages.dealloc(sbi)?.fence();
 
             sbi.page_allocator.dealloc_data_page_list(&pages)?;
             // TODO: should this be done earlier or is it protected by locks?
