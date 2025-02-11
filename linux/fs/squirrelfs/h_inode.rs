@@ -608,7 +608,7 @@ impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
         Result<
             core::result::Result<
                 InodeWrapper<'a, Clean, Complete, RegInode>, 
-                (InodeWrapper<'a, Clean, ToDealloc, RegInode>, DataPageListWrapper<Clean, ToUnmap>)
+                (InodeWrapper<'a, Clean, UnmapPages, RegInode>, DataPageListWrapper<Clean, ToUnmap>)
             >
         > {
             // there are still links, so don't delete the inode or its pages
@@ -643,7 +643,7 @@ impl<'a> InodeWrapper<'a, Clean, DecLink, RegInode> {
         }
 }
 
-impl<'a> InodeWrapper<'a, Clean, ToDealloc, RegInode> {
+impl<'a> InodeWrapper<'a, Clean, UnmapPages, RegInode> {
     // NOTE: data page wrappers don't actually need to be free, they just need to be in ClearIno
     pub(crate) fn runtime_dealloc(self, _freed_pages: Vec<DataPageWrapper<'a, Clean, Free>>) -> InodeWrapper<'a, Dirty, Complete, RegInode> {
         self.inode.inode_type = InodeType::NONE;
