@@ -732,7 +732,7 @@ fn squirrelfs_rmdir<'a>(
 ) -> Result<(
     InodeWrapper<'a, Clean, Complete, DirInode>, // target
     InodeWrapper<'a, Clean, DecLink, DirInode>,  // parent
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
 )> {
     let inode = dentry.d_inode();
     let parent_inode = sbi.get_init_dir_inode_by_vfs_inode(dir.get_inner())?;
@@ -890,7 +890,7 @@ fn squirrelfs_rename<'a>(
     new_dentry: &fs::DEntry,
     _flags: u32,
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_name = old_dentry.d_name();
@@ -970,7 +970,7 @@ fn reg_inode_rename<'a>(
     new_dir: Option<InodeWrapper<'a, Clean, Start, DirInode>>,
     old_dentry_info: &DentryInfo,
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_name = cstr_to_filename_array(old_dentry.d_name());
@@ -1061,7 +1061,7 @@ fn dir_inode_rename<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_dentry_info: &DentryInfo,
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_name = cstr_to_filename_array(old_dentry.d_name());
@@ -1358,7 +1358,7 @@ fn rename_overwrite_file_inode<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // decrement link count of the inode whose dentry is being overwritten
@@ -1379,7 +1379,7 @@ fn rename_overwrite_file_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // decrement link count of the inode whose dentry is being overwritten
@@ -1401,7 +1401,7 @@ fn rename_overwrite_dir_inode_single_dir<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // clear the rename pointer in the dst dentry, since the src has been invalidated
@@ -1420,7 +1420,7 @@ fn rename_overwrite_dir_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // clear the rename pointer in the dst dentry, since the src has been invalidated
@@ -1439,7 +1439,7 @@ fn rename_new_inode_dir_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, IncLink, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // clear the rename pointer in the dst dentry, since the src has been invalidated
@@ -1457,7 +1457,7 @@ fn rename_new_inode_dir_inode_single_dir<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // clear the rename pointer in the dst dentry, since the src has been invalidated
@@ -1474,7 +1474,7 @@ fn rename_new_file_inode_single_dir<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let dst_dentry = dst_dentry.clear_rename_pointer(&src_dentry).flush().fence();
@@ -1489,7 +1489,7 @@ fn rename_new_file_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let dst_dentry = dst_dentry.clear_rename_pointer(&src_dentry).flush().fence();
@@ -1504,7 +1504,7 @@ fn rename_overwrite_deallocation_file_inode<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_parent_inode_info = old_dir.get_inode_info()?;
@@ -1539,7 +1539,7 @@ fn rename_overwrite_deallocation_file_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_parent_inode_info = old_dir.get_inode_info()?;
@@ -1577,7 +1577,7 @@ fn rename_overwrite_deallocation_dir_inode_single_dir<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // decrement link count because we are getting rid of a dir
@@ -1622,7 +1622,7 @@ fn rename_overwrite_deallocation_dir_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // decrement link count because we are getting rid of a dir
@@ -1671,7 +1671,7 @@ fn rename_new_dentry_deallocation_dir_inode_single_dir<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_parent_inode_info = old_dir.get_inode_info()?;
@@ -1702,7 +1702,7 @@ fn rename_new_dentry_deallocation_dir_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, IncLink, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     // decrement link count because we are getting rid of a dir
@@ -1741,7 +1741,7 @@ fn rename_deallocation_file_inode_single_dir<'a>(
     old_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_parent_inode_info = old_dir.get_inode_info()?;
@@ -1768,7 +1768,7 @@ fn rename_deallocation_file_inode_crossdir<'a>(
     new_dir: InodeWrapper<'a, Clean, Start, DirInode>,
     old_name: &[u8; MAX_FILENAME_LEN],
 ) -> Result<(
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
     DentryWrapper<'a, Clean, Complete>,
 )> {
     let old_parent_inode_info = old_dir.get_inode_info()?;
@@ -1799,7 +1799,7 @@ fn squirrelfs_unlink<'a>(
     dentry: &fs::DEntry,
 ) -> Result<(
     InodeWrapper<'a, Clean, DecLink, RegInode>,
-    DentryWrapper<'a, Clean, Free>,
+    DentryWrapper<'a, Clean, Dealloc>,
 )> {
     init_timing!(unlink_full_declink);
     start_timing!(unlink_full_declink);

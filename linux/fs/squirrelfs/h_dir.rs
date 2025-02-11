@@ -214,7 +214,9 @@ impl<'a> DentryWrapper<'a, Clean, Free> {
             dentry: self.dentry,
         })
     }
+}
 
+impl<'a> DentryWrapper<'a, Clean, Dealloc> {
     pub(crate) fn try_dealloc_parent_page(
         &self,
         sbi: &'a SbInfo,
@@ -353,7 +355,7 @@ impl<'a> DentryWrapper<'a, Clean, Recovery> {
         }
     }
 
-    pub(crate) fn recovery_dealloc(self) -> DentryWrapper<'a, Dirty, Free> {
+    pub(crate) fn recovery_dealloc(self) -> DentryWrapper<'a, Dirty, Dealloc> {
         self.dentry.ino = 0;
         self.dentry.name.iter_mut().for_each(|c| *c = 0);
         self.dentry.rename_ptr = 0;
@@ -485,7 +487,7 @@ impl<'a> DentryWrapper<'a, Clean, InitRenamePointer> {
 }
 
 impl<'a> DentryWrapper<'a, Clean, ClearIno> {
-    pub(crate) fn dealloc_dentry(self) -> DentryWrapper<'a, Dirty, Free> {
+    pub(crate) fn dealloc_dentry(self) -> DentryWrapper<'a, Dirty, Dealloc> {
         if self.dentry.rename_ptr != 0 {
             pr_info!(
                 "WARNING: dentry {:?} has non zero rename pointer\n",
