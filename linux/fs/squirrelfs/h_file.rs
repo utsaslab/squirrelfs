@@ -3,6 +3,7 @@ use crate::defs::*;
 use crate::h_inode::*;
 use crate::typestate::*;
 use crate::volatile::*;
+use crate::namei::*;
 use crate::{end_timing, fence_vec, init_timing, start_timing};
 use core::{ffi, marker::Sync, ptr, sync::atomic::Ordering};
 use kernel::prelude::*;
@@ -19,6 +20,16 @@ impl<T: Sync> file::OpenAdapter<T> for Adapter {
         ptr::null_mut()
     }
 }
+
+enum FALLOC_FLAG {
+    FALLOC_FL_KEEP_SIZE = 0x01,
+    FALLOC_FL_PUNCH_HOLE = 0x02,
+    // FALLOC_FL_NO_HIDE_STALE = 0x04,
+    FALLOC_FL_COLLAPSE_RANGE = 0x08,
+    FALLOC_FL_ZERO_RANGE = 0x10,
+    FALLOC_FL_INSERT_RANGE = 0x20,
+    // FALLOC_FL_UNSHARE_RANGE = 0x40,
+} 
 
 pub(crate) struct FileOps;
 #[vtable]
@@ -129,12 +140,82 @@ impl file::Operations for FileOps {
 
     fn fallocate(
         _data: (),
-        _file: &file::File,
-        _mode: i32,
-        _offset: i64,
-        _len: i64,
+        file: &file::File,
+        mode: i32,
+        offset: i64,
+        len: i64,
     ) -> Result<u64> {
-        Err(EINVAL)
+        let inode : &mut fs::INode = unsafe { &mut *file.inode().cast() };
+        let sb = inode.i_sb();
+        let fs_info_raw = unsafe { (*sb).s_fs_info };
+        let sbi = unsafe { &mut *(fs_info_raw as *mut SbInfo) };
+        let end_offset : i64 = len + offset;  
+
+        let pi = sbi.get_init_reg_inode_by_vfs_inode(inode.get_inner())?;
+        let initial_size: i64 = pi.get_size() as i64;
+
+        if mode == 0 && end_offset > initial_size {
+            return match squirrelfs_truncate(sbi, pi, end_offset){
+                Ok(_) => Ok(1),
+                Err(e) => Err(e)
+            }    
+        } 
+        else if mode & FALLOC_FLAG::FALLOC_FL_PUNCH_HOLE as i32 == 0x2 {
+            pr_info!("Punching a hole");
+            let page_size : i64 = SQUIRRELFS_PAGESIZE.try_into()?;
+            let mut start_page = offset / page_size;
+            let mut end_page = if initial_size % page_size == 0 {initial_size / page_size - 1} 
+                else {initial_size / page_size };
+
+            let start_page_offset = start_page * page_size;
+            let end_page_offset = (end_page + 1) * page_size;
+
+            // zero out the first page that is partial
+            if start_page_offset < offset {
+                let partial_start_length = if page_size - (offset % page_size) > len {len} else {page_size - (offset % page_size)};
+                let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_start_length.try_into()?, offset.try_into()?)?;
+                let (_bytes_written, pages) = match pages {
+                    Ok(pages) => {
+                        let (bytes_written, pages) = pages.zero_pages(sbi, partial_start_length.try_into()?, offset.try_into()?)?;
+                        start_page += 1;
+                        (bytes_written, pages)
+                    },
+                    Err(e) => return Err(EINVAL),
+                };
+                pages.fence(); 
+            }  
+            
+            // zero out end page that is partial
+            if end_page_offset > end_offset {
+                let partial_end_length = end_offset % page_size;
+                let partial_end_offset = if end_page_offset - page_size > offset {end_page_offset - page_size} else {offset};
+                let pages = DataPageListWrapper::get_data_page_list(pi.get_inode_info()?, partial_end_length.try_into()?, 
+                    partial_end_offset.try_into()?)?;
+                let (_bytes_written, pages) = match pages {
+                    Ok(pages) => {
+                        let (bytes_written, pages) = pages.zero_pages(sbi, partial_end_length.try_into()?, partial_end_offset.try_into()?)?;
+                        end_page -= 1;
+                        (bytes_written, pages)
+                    },
+                    Err(e) => return Err(EINVAL),
+                };
+                pages.fence(); 
+            }
+
+            if start_page <= end_page {
+                let full_pages_offset = start_page * page_size;
+                let full_pages_length = (end_page - start_page + 1) * page_size;
+                let (new_size, pi) = pi.dec_size(initial_size.try_into()?);
+                let pages = DataPageListWrapper::get_data_pages_to_truncate(&pi, full_pages_length.try_into()?, 
+                    full_pages_offset.try_into()?)?;
+                let pages = pages.unmap(sbi)?.fence();
+                let pages = pages.dealloc(sbi)?.fence().mark_free();
+                sbi.page_allocator.dealloc_data_page_list(&pages)?;
+                let pi_info = pi.get_inode_info()?;
+                pi_info.remove_pages(&pages)?;
+            }
+        }
+        Ok(1)
     }
 
     fn ioctl(data: (), file: &file::File, cmd: &mut file::IoctlCommand) -> Result<i32> {
