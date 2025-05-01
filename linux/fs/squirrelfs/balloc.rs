@@ -50,6 +50,326 @@ pub(crate) struct PageFreeList {
     pub(crate) list: RBTree<PageNum, ()>,
 }
 
+pub(crate) struct PageFreeListBitmap {
+    pub(crate) free_pages: u64,
+    pub(crate) list: Vec<bool>,
+}
+ 
+pub(crate) struct PerCpuPageAllocatorBitmap {
+    pub(crate) free_lists: Vec<Arc<Mutex<PageFreeListBitmap>>>,
+    pub(crate) pages_per_cpu: u64,
+    pub(crate) cpus: u32,
+    // first page the allocator is allowed to return. used to figure out
+    // which cpu deallocated pages belong to
+    pub(crate) start: u64,
+}
+
+impl PageAllocator for Option<PerCpuPageAllocatorBitmap> {
+    fn new_from_range(val:u64, dev_pages: u64, cpus: u32) -> Result<Self> {
+        let total_pages = dev_pages - val;
+        let cpus_u64: u64 = cpus.into();
+        let pages_per_cpu = total_pages / cpus_u64;
+        pr_info!("pages per cpu: {:?}\n", pages_per_cpu);
+        let mut free_lists = Vec::new();
+        for i in 0..cpus_u64 {
+            let mut bitmap = Vec::try_with_capacity(pages_per_cpu as usize)?;
+            bitmap.try_resize(pages_per_cpu as usize, false)?;
+            free_lists.try_push(PageFreeListBitmap {
+                free_pages: pages_per_cpu,
+                list: bitmap,
+            })?;
+        }
+        
+        let mut protected_free_lists = Vec::new();
+        for free_list in free_lists {
+            protected_free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
+        }
+        Ok(Some(PerCpuPageAllocatorBitmap {
+            free_lists: protected_free_lists,
+            pages_per_cpu,
+            cpus,
+            start: val,
+        }))
+    }
+
+    fn new_from_alloc_vec(
+        alloc_pages: List<Box<LinkedPage>>,
+        num_alloc_pages: u64,
+        start: u64,
+        dev_pages: u64,
+        cpus: u32,
+    ) -> Result<Self> {
+        let total_pages = dev_pages - start;
+        let cpus_u64: u64 = cpus.into();
+        let pages_per_cpu = total_pages / cpus_u64;
+        let mut free_lists = Vec::new();
+        let mut page_cursor = alloc_pages.cursor_front();
+        let mut current_alloc_page = page_cursor.current();
+        // let current_page = start;
+        // let current_cpu_start = start; // used to keep track of when to move to the next cpu pool
+                                           // let mut i = 0;
+        for _i in 0..cpus_u64 { // setup the bitmaps empty
+            // let mut bitmap = [false; pages_per_cpu as usize];
+            let mut bitmap = Vec::try_with_capacity(pages_per_cpu as usize)?;
+            bitmap.try_resize(pages_per_cpu as usize, false)?;
+            // let bitmap : Vec<bool> = bitmap.to_vec();
+            free_lists.try_push(PageFreeListBitmap {
+                free_pages: pages_per_cpu,
+                list: bitmap,
+            })?;
+        } 
+        // populate the necessary pages
+        if num_alloc_pages > 0 {
+            while current_alloc_page.is_some() {
+                if let Some(current_alloc_page) = current_alloc_page {
+                    let current_alloc_page_no = current_alloc_page.get_page_no() - start;
+                    let cpu_choice = current_alloc_page_no / pages_per_cpu;
+                    let cpu_index = current_alloc_page_no % pages_per_cpu;
+                    free_lists[cpu_choice as usize].list[cpu_index as usize] = true;
+                    page_cursor.move_next();
+                }
+                current_alloc_page = page_cursor.current(); 
+            }
+        }
+
+        // protect the free lists with atomic reference count mutexes
+        let mut protected_free_lists = Vec::new();
+        for free_list in free_lists {
+            protected_free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
+        }
+        Ok(Some(PerCpuPageAllocatorBitmap {
+            free_lists: protected_free_lists,
+            pages_per_cpu,
+            cpus,
+            start,
+        }))
+        // if num_alloc_pages > 0 {
+        //     while current_alloc_page.is_some() {
+        //         if let Some(current_alloc_page) = current_alloc_page {
+        //             let current_alloc_page_no = current_alloc_page.get_page_no();
+        //             if current_page == current_cpu_start + pages_per_cpu {
+        //                 let free_list = PageFreeListBitmap {
+        //                     free_pages: pages_per_cpu,
+        //                     list: bitmap,
+        //                 };
+        //                 free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
+        //                 bitmap = Vec::new();
+        //                 current_cpu_start += pages_per_cpu;
+        //             }
+        //             if current_page < current_alloc_page_no {
+        //                 bitmap.try_insert(current_page as usize, false)?;
+        //                 current_page += 1;
+        //             } else if current_page == current_alloc_page_no {
+        //                 bitmap.try_insert(current_page as usize, true)?;
+        //                 current_page += 1;
+        //                 page_cursor.move_next();
+        //             } else {
+        //                 pr_info!(
+        //                     "ERROR: current page is {:?} but current alloc page is {:?}\n",
+        //                     current_page,
+        //                     current_alloc_page_no
+        //                 );
+        //                 return Err(EINVAL);
+        //             }
+        //         }
+        //         current_alloc_page = page_cursor.current();
+        //     }
+        // }
+        // if current_page < dev_pages {
+        //     for current in current_page..dev_pages {
+        //         if current == (current_cpu_start + pages_per_cpu).try_into()? {
+        //             let free_list = PageFreeListBitmap {
+        //                 free_pages: pages_per_cpu,
+        //                 list: bitmap,
+        //             };
+        //             free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
+        //             bitmap = Vec::new();
+        //             current_cpu_start += pages_per_cpu;
+        //         }
+        //         bitmap.try_insert(current as usize, false)?;
+        //     }
+        // }
+        // // if there is only one cpu, we may not have inserted the free list earlier
+        // if cpus == 1 && free_lists.len() == 0 {
+        //     let free_list = PageFreeListBitmap {
+        //         free_pages: pages_per_cpu,
+        //         list: bitmap,
+        //     };
+        //     free_lists.try_push(Arc::try_new(Mutex::new(free_list))?)?;
+        // }
+        // Ok(Some(PerCpuPageAllocatorBitmap {
+        //     free_lists,
+        //     pages_per_cpu,
+        //     cpus,
+        //     start,
+        // }))
+    }
+
+    fn alloc_page(&self) -> Result<PageNum> {
+        if let Some(allocator) = self {
+            // Get the current CPU ID
+            let cpu = get_cpuid(&allocator.cpus);
+            let cpu_usize: usize = cpu.try_into()?;
+            let free_list = Arc::clone(&allocator.free_lists[cpu_usize]);
+            let mut free_list = free_list.lock();
+
+            // Check if the current CPU's pool has free pages
+            if free_list.free_pages > 0 {
+                // Find the first free page in the bitmap
+                let iter = free_list.list.iter().position(|&x| !x);
+                let page = match iter {
+                    None => {
+                        pr_info!("ERROR: unable to get free page on CPU {:?}\n", cpu);
+                        return Err(ENOSPC);
+                    }
+                    Some(page) => page as u64,
+                };
+
+                // Mark the page as allocated
+                free_list.list[page as usize] = true;
+                free_list.free_pages -= 1;
+
+                // Return the global page number
+                return Ok(page + allocator.start + (cpu as u64 * allocator.pages_per_cpu));
+            }
+
+            // If no free pages, search other CPUs
+            drop(free_list);
+            for i in 0..allocator.cpus {
+                if i != cpu {
+                    let i_usize: usize = i.try_into()?;
+                    let free_list = Arc::clone(&allocator.free_lists[i_usize]);
+                    let mut free_list = free_list.lock();
+
+                    if free_list.free_pages > 0 {
+                        let iter = free_list.list.iter().position(|&x| !x);
+                        let page = match iter {
+                            None => continue,
+                            Some(page) => page as u64,
+                        };
+
+                        free_list.list[page as usize] = true;
+                        free_list.free_pages -= 1;
+
+                        // Return the global page number
+                        return Ok(page + allocator.start + (i as u64 * allocator.pages_per_cpu));
+                    }
+                }
+            }
+
+            // No free pages available
+            pr_info!("ERROR: no more pages available\n");
+            Err(ENOSPC)
+        } else {
+            pr_info!("ERROR: page allocator is uninitialized\n");
+            Err(EINVAL)
+        }
+    }
+
+    fn dealloc_data_page<'a>(&self, page: &DataPageWrapper<'a, Clean, Dealloc>) -> Result<()> {
+        if let Some(allocator) = self {
+            let page_no = page.get_page_no();
+            allocator.dealloc_page(page_no)
+        } else {
+            pr_info!("ERROR: page allocator is uninitialized\n");
+            Err(EINVAL)
+        }
+    }
+
+    fn dealloc_data_page_list(&self, pages: &DataPageListWrapper<Clean, Free>) -> Result<()> {
+        if let Some(allocator) = self {
+            let mut page_list = pages.get_page_list_cursor();
+            let mut page = page_list.current();
+            while page.is_some() {
+                if let Some(page) = page {
+                    allocator.dealloc_page(page.get_page_no())?;
+                    page_list.move_next();
+                } else {
+                    unreachable!()
+                }
+                page = page_list.current();
+            }
+            Ok(())
+        } else {
+            pr_info!("ERROR: page allocator is uninitialized\n");
+            Err(EINVAL)
+        }
+    }
+
+    fn dealloc_dir_page<'a>(&self, page: &DirPageWrapper<'a, Clean, Dealloc>) -> Result<()> {
+        if let Some(allocator) = self {
+            let page_no = page.get_page_no();
+            allocator.dealloc_page(page_no)
+        } else {
+            pr_info!("ERROR: page allocator is uninitialized\n");
+            Err(EINVAL)
+        }
+    }
+
+    fn dealloc_dir_page_list(&self, pages: &DirPageListWrapper<Clean, Free>) -> Result<()> {
+        if let Some(allocator) = self {
+            let mut page_list = pages.get_page_list_cursor();
+            let mut page = page_list.current();
+            while page.is_some() {
+                if let Some(page) = page {
+                    allocator.dealloc_page(page.get_page_no())?;
+                    page_list.move_next();
+                }
+                page = page_list.current();
+            }
+            Ok(())
+        } else {
+            pr_info!("ERROR: page allocator is uninitialized\n");
+            Err(EINVAL)
+        }
+    }
+
+}
+
+impl PerCpuPageAllocatorBitmap {
+    fn dealloc_page(&self, page_no: PageNum) -> Result<()> {
+        // rust division rounds down
+        let cpu:usize = ((page_no - self.start) / self.pages_per_cpu).try_into()?;
+        let free_list = Arc::clone(&self.free_lists[cpu]);
+        let mut free_list = free_list.lock();
+        if let Err(e) = free_list.list.try_insert(page_no as usize, false) {
+            pr_info!(
+                "ERROR: failed to insert {:?} into page allocator at CPU {:?}, error {:?}\n",
+                page_no,
+                cpu,
+                e
+            );
+            return Err(e.into());
+        }
+        free_list.free_pages += 1;
+        Ok(())
+        // // unwrap the error so we can get at the option
+        // let result = match res {
+        //     Ok(res) => res,
+        //     Err(e) => {
+        //         pr_info!(
+        //             "ERROR: failed to insert {:?} into page allocator at CPU {:?}, error {:?}\n",
+        //             page_no,
+        //             cpu,
+        //             e
+        //         );
+        //         return Err(e.into());
+        //     }
+        // };
+        // // check that the page was not already present in the bitmap
+        // if result.is_some() {
+        //     pr_info!(
+        //         "ERROR: page {:?} was already in the allocator at CPU {:?}\n",
+        //         page_no,
+        //         cpu
+        //     );
+        //     Err(EINVAL)
+        // } else {
+        //     Ok(())
+        // }
+    }
+}
+
 pub(crate) struct PerCpuPageAllocator {
     free_lists: Vec<Arc<Mutex<PageFreeList>>>,
     pages_per_cpu: u64,
