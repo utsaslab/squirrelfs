@@ -166,8 +166,8 @@ pub(crate) struct SbInfo {
     // if they are.
     // TODO: fix this.
     // optional because we can't set it up until we know how big the fs is
-    pub(crate) page_allocator: Option<PerCpuPageAllocatorBitmap>, 
-    pub(crate) inode_allocator: Option<BitmapInodeAllocator>,
+    pub(crate) page_allocator: Option<PerCpuPageAllocator>,
+    pub(crate) inode_allocator: Option<RBInodeAllocator>,
 
     pub(crate) inodes_to_free: InodeToFreeList,
 

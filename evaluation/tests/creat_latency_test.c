@@ -26,7 +26,6 @@ int main(void) {
         gettimeofday(&tv_end, NULL);
         if (fd < 0) {
             perror("open");
-            fprintf(stderr, "Error opening file %s\nSaw fd %d\n", filename, fd);
             return fd;
         }
         close(fd);

@@ -30,7 +30,6 @@ int main(int argc, char *argv[]) {
     memset(data, 'a', FILESIZE);
     memset(read_data, 0, FILESIZE);
 
-    // printf("data: %s\n", data);
     // if (argc < 2) {
     //     printf("Please give IO size\n");
     //     return 1;
@@ -44,7 +43,6 @@ int main(int argc, char *argv[]) {
     int io_size = IOSIZE;
 
     for (int j = 0; j < ITERATIONS; j++) {
-        // fprintf("iteration %d\n", j);
         int fd = open("/mnt/pmem/foo", O_RDWR | O_CREAT);
         assert(fd > 0);
 

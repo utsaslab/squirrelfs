@@ -28,6 +28,7 @@ int main(void) {
         }
         lseek(fd, 0, SEEK_SET);
         fsync(fd);
+
         for (int i = 0; i < 2; i++) {
             // ret = pread(fd, read_data, 8192, i*8192);
             int bytes_written = 0; 

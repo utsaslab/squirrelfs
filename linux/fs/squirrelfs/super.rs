@@ -91,7 +91,7 @@ impl fs::Type for SquirrelFs {
 
             let inode = unsafe { init_fs(&mut data, &sb)? };
 
-            data.page_allocator = Option::<PerCpuPageAllocatorBitmap>::new_from_range(
+            data.page_allocator = Option::<PerCpuPageAllocator>::new_from_range(
                 // DATA_PAGE_START,
                 data.get_data_pages_start_page(),
                 // NUM_PAGE_DESCRIPTORS, // TODO: have this be the actual number of blocks
@@ -103,7 +103,7 @@ impl fs::Type for SquirrelFs {
                 data.cpus,
             )?;
 
-            data.inode_allocator = Some(BitmapInodeAllocator::new(ROOT_INO + 1, data.num_inodes)?);
+            data.inode_allocator = Some(InodeAllocator::new(ROOT_INO + 1, data.num_inodes)?);
 
             // initialize superblock
             let sb = sb.init(
@@ -690,7 +690,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         fix_link_counts(sbi, persistent_link_counts, real_link_counts)?;
     }
 
-    sbi.page_allocator = Option::<PerCpuPageAllocatorBitmap>::new_from_alloc_vec(
+    sbi.page_allocator = Option::<PerCpuPageAllocator>::new_from_alloc_vec(
         alloc_page_list,
         num_alloc_pages,
         sbi.get_data_pages_start_page(),
@@ -701,7 +701,7 @@ fn remount_fs(sbi: &mut SbInfo) -> Result<()> {
         },
         sbi.cpus,
     )?;
-    sbi.inode_allocator = Some(BitmapInodeAllocator::new_from_alloc_vec(
+    sbi.inode_allocator = Some(RBInodeAllocator::new_from_alloc_vec(
         alloc_inode_list,
         num_alloc_inodes,
         ROOT_INO + 1,
