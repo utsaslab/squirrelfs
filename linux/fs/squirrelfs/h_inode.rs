@@ -1046,14 +1046,30 @@ pub(crate) struct BitmapInodeAllocator {
     bitmap: Arc<Mutex<Vec<bool>>>,
 }
 
+impl BitmapInodeAllocator {
+    // we could keep track of the free inode count in the 
+    // allocator itself but that would add overhead and this 
+    // is only used for debugging
+    pub(crate) fn count_free_inodes(&self) -> usize {
+        let bitmap = Arc::clone(&self.bitmap);
+        let bitmap = bitmap.lock();
+        let mut free_count : usize = 0;
+        for inode in bitmap.iter() {
+            if *inode == false {
+                free_count += 1;
+            }
+        }
+        free_count
+    }
+}
+
 impl InodeAllocator for BitmapInodeAllocator {
     fn new(val: u64, num_inodes: u64) -> Result<Self> { // assuming val is the first inode to be allocated
-        let mut bitmap = Vec::new();
+        let mut bitmap = Vec::try_with_capacity(num_inodes as usize)?;
+        bitmap.try_resize(num_inodes as usize, false)?;
         for i in 0..num_inodes {
             if i < val {
-                bitmap.try_push(true)?; // marking as allocated
-            } else {
-                bitmap.try_push(false)?; // marking as free
+                bitmap[i as usize] = true; // marking as allocated
             }
         }
         Ok(Self {
@@ -1063,7 +1079,8 @@ impl InodeAllocator for BitmapInodeAllocator {
 
     fn new_from_alloc_vec(alloc_inodes: List<Box<LinkedInode>>, 
         num_alloc_inodes: u64, start: u64, num_inodes: u64) -> Result<Self> {
-        let mut bitmap = Vec::new(); // initialize bitmap to all falses
+        let mut bitmap = Vec::try_with_capacity(num_inodes as usize)?; // initialize bitmap to all falses
+        bitmap.try_resize(num_inodes as usize, false)?;
         let mut inode_cursor = alloc_inodes.cursor_front();
         let mut current_alloc_inode = inode_cursor.current();
         let mut cur_ino = start;
@@ -1074,32 +1091,20 @@ impl InodeAllocator for BitmapInodeAllocator {
                 current_alloc_inode = inode_cursor.current();
             }
         }
-        if num_alloc_inodes > 0 {
-            while current_alloc_inode.is_some() {
-                if let Some(current_alloc_inode) = current_alloc_inode {
-                    let current_alloc_ino = current_alloc_inode.get_ino();
-                    if cur_ino < current_alloc_ino {
-                        bitmap.try_push(false)?; // marking as free
-                        cur_ino += 1;
-                    } else if cur_ino == current_alloc_ino {
-                        bitmap.try_push(true)?; // marking as allocated
-                        cur_ino += 1;
-                        inode_cursor.move_next();
-                    } else {
-                        // shouldn't ever happen
-                        pr_info!("ERROR: current inode is {:?} but current alloc inode is {:?}\n", cur_ino, current_alloc_ino);
-                        return Err(EINVAL);
-                    }
-                }
-                current_alloc_inode = inode_cursor.current();
-            }
+        // mark all inodes until start as allocated
+        for i in 0..start {
+            bitmap[i as usize] = true; // marking as allocated
         }
-        // add all remaining inodes to the allocator
-        if cur_ino < num_inodes.try_into()? {
-            for _j in cur_ino..num_inodes.try_into()? {
-                bitmap.try_push(false)?; // marking as free
+
+        while let Some(inode) = inode_cursor.current() {
+            let ino = inode.get_ino();
+            let index = ino as usize;
+            if index < (num_inodes as usize) {
+                bitmap[index] = true;
             }
+            inode_cursor.move_next();
         }
+        
         Ok(Self {
             bitmap: Arc::try_new(Mutex::new(bitmap))?
         })
