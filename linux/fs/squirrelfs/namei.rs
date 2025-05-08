@@ -2012,7 +2012,7 @@ fn squirrelfs_symlink<'a>(
 }
 
 // TODO: return a type indicating that the truncate has completed
-fn squirrelfs_truncate<'a>(
+pub(crate) fn squirrelfs_truncate<'a>(
     sbi: &SbInfo,
     pi: InodeWrapper<'a, Clean, Start, RegInode>,
     size: i64,
